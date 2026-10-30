@@ -1,7 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { PGlite } from "@electric-sql/pglite";
+import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDb, newUser } from "./helpers";
 
 /**
  * Runs every migration, in order, on an in-memory Postgres and checks that the
@@ -9,7 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * auth schema and the anon/authenticated roles) are stubbed.
  */
 
-const MIGRATIONS_DIR = join(__dirname, "..", "migrations");
 const SAFE_MAX = "9007199254740991";
 
 let db: PGlite;
@@ -17,22 +15,9 @@ let userId: string;
 let otherUserId: string;
 
 beforeAll(async () => {
-  db = new PGlite();
-  await db.exec(`
-    create role anon;
-    create role authenticated;
-    alter default privileges in schema public grant all on tables to anon, authenticated;
-    create schema auth;
-    create table auth.users (id uuid primary key default gen_random_uuid());
-    create function auth.uid() returns uuid language sql stable as
-      $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  `);
-  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  for (const file of files) {
-    await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
-  }
-  userId = (await db.query<{ id: string }>("insert into auth.users default values returning id")).rows[0]!.id;
-  otherUserId = (await db.query<{ id: string }>("insert into auth.users default values returning id")).rows[0]!.id;
+  db = await createDb();
+  userId = await newUser(db);
+  otherUserId = await newUser(db);
 });
 
 afterAll(async () => {
@@ -202,8 +187,8 @@ describe("bet_selections", () => {
 
 describe("profiles", () => {
   it("accepts a name and rejects an empty one", async () => {
-    await db.query("insert into public.profiles (id, display_name) values ($1, 'Ada')", [userId]);
-    await expect(db.query("insert into public.profiles (id, display_name) values ($1, '')", [otherUserId])).rejects.toThrow();
+    await db.query("update public.profiles set display_name = 'Ada' where id = $1", [userId]);
+    await expect(db.query("update public.profiles set display_name = '' where id = $1", [otherUserId])).rejects.toThrow();
   });
   it("rejects a profile for a user that does not exist", async () => {
     await expect(
@@ -223,8 +208,7 @@ describe("housekeeping", () => {
   });
 
   it("deleting a user deletes their profile and bets", async () => {
-    const temp = (await db.query<{ id: string }>("insert into auth.users default values returning id")).rows[0]!.id;
-    await db.query("insert into public.profiles (id) values ($1)", [temp]);
+    const temp = await newUser(db);
     await insertBet({ user_id: temp });
     await db.query("delete from auth.users where id = $1", [temp]);
     const bets = await db.query<{ n: number }>("select count(*)::int as n from public.bets where user_id = $1", [temp]);
