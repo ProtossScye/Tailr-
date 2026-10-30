@@ -7,6 +7,7 @@ Tailr is a personalized betting-slip assistant with manual bet tracking and a pe
 ## What exists today
 
 - `lib/accounting/`: the calculation engine (settled P/L, ROI, win rate, Lagos date ranges, NGN and USD in integer minor units). Pure TypeScript, tested, no dependencies on the rest of the app. See [`lib/accounting/README.md`](lib/accounting/README.md) for the rules.
+- `supabase/`: database migrations (`profiles`, `bets`, `bet_selections`) and schema tests. See "How to change the database" in [`docs/STATUS.md`](docs/STATUS.md).
 
 ## Run the tests
 
