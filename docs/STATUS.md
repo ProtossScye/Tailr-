@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-01. Update this at the end of every work session.
+Last updated: 2026-11-01 (API layer and sign-in added). Update this at the end of every work session.
 
 ## Done
 
@@ -17,10 +17,17 @@ Last updated: 2026-11-01. Update this at the end of every work session.
   - Two database functions, `create_bet` and `update_bet`, so a bet and its legs are saved together or not at all. They run as the signed-in user (not the database owner), take the owner from the session never from the input, and always create bets as pending.
   - Hand-written input validation that reports every problem at once, field by field, ready for forms.
   - `lib/services/supabase-repository.ts` connects the services to Supabase.
-- **335 tests pass** with a clean strict typecheck: 103 engine, 34 schema, 44 access, 20 database functions, 43 services, 74 validation, 17 paging. The database tests run every migration on an in-memory Postgres (PGlite) with Supabase's pieces stubbed (`supabase/tests/helpers.ts`), and the services run the real SQL under the signed-in role.
+- **363 tests pass** with a clean strict typecheck: 103 engine, 34 schema, 44 access, 20 database functions, 43 services, 74 validation, 17 paging, 28 API handlers. The database tests run every migration on an in-memory Postgres (PGlite) with Supabase's pieces stubbed (`supabase/tests/helpers.ts`), and the services run the real SQL under the signed-in role.
 - **Break-tested:** 17 deliberate weakenings of the privacy rules and 24 of the services and new functions are all caught. Both rounds first missed something (10 of 17, then 23 of 24), and each gap got a new test: update and delete rules need no-`WHERE` tests, and "is there a next page" needs a test where the last page is exactly full.
 - **Bug found and fixed while testing:** JavaScript quietly turns `2026-02-30` into March 2, which would have saved a bet on the wrong day. Impossible dates are now rejected.
 - **Live check on the real project** (rolled back, no data left behind): two users each created bets; one cannot edit or overwrite the other's bet or legs; owner, status and return cannot be smuggled in; a bad leg rolls back everything; signed-out visitors cannot call the functions. Supabase's security advisor shows no findings.
+- **Backend step 6, API layer and sign-in** (Next.js 16 app, `@supabase/ssr`):
+  - Sign-up, sign-in, sign-out and email-confirm routes (`app/(auth)`, `app/auth/*`); plain unstyled pages. `proxy.ts` (Next 16's name for middleware) refreshes the session and sends signed-out visitors to `/sign-in`. Sessions are verified with `getClaims()`, never `getSession()`.
+  - JSON routes under `app/api/`: `GET/POST /api/bets`, `GET/PATCH/DELETE /api/bets/:id`, `POST /api/bets/:id/settle`, `GET /api/dashboard`. Logic is in `lib/api/handlers.ts` as `(deps, Request) => Response`; route files only look up the session. Response and error shapes are in `lib/api/types.ts`.
+  - 401 when signed out, 400 with per-field `issues`, 404 for missing or someone else's bet (identical), masked 500. JSON bodies must be `application/json` and under 256 KB.
+  - Protected placeholder area `app/(app)/` for the frontend shell.
+  - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
+  - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
 - Project pack committed under `docs/`.
 
 ## Decisions made (copy into `10_DECISIONS_AND_RISKS.md` when it exists)
@@ -55,16 +62,15 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-1. **Backend step 6, the API layer:** thin server actions or route handlers that check the signed-in user, turn JSON into the service inputs, call the services, and turn `ValidationError` / `NotFoundError` into responses (field messages for forms, 404 for not found). Build the Supabase client from the user's session (publishable key); never use the secret key for user requests. This needs the Next.js app, so it is best done together with the frontend shell.
-2. **Frontend shell** (suggested owner: app shell and forms): responsive shell, navigation, empty states for Dashboard, Slip Assistant, Bet History, Preferences. No fake data or charts. See "First coding task" in `08_AI_BUILD_RULES.md`.
-3. Connect them one feature at a time: sign-in, add bet, history, settle bet, dashboard.
-4. Before real users sign up, review the Supabase Auth settings in the dashboard (email sign-up and confirmation, password strength, site URL and redirect URLs).
+Follow [`NEXT_STEPS.md`](NEXT_STEPS.md) (backend and frontend steps) and [`FRONTEND_TASKS.md`](FRONTEND_TASKS.md) (prompts F1 to F6). Before anything else: set up `.env.local` and the Supabase Auth settings ([`SUPABASE_AUTH_CHECKLIST.md`](SUPABASE_AUTH_CHECKLIST.md)), then run the live check in NEXT_STEPS B2.
 
 Do not start the slip parser or any AI work until the tracker works end to end.
 
 ## Not verified yet
 
-- `lib/services/supabase-repository.ts` type-checks and mirrors the test repository, and the two SQL functions it calls were checked live. But it has **not been run through the real supabase-js client against the live API**, because that needs a signed-in test user and the Next.js app does not exist yet. Check it in the first API-layer work: create a bet, list it, settle it, read the dashboard, and confirm a second user sees nothing. Pay attention to the embedded `bet_selections(*)` select and the `count: "exact"` paging.
+- - `lib/services/supabase-repository.ts` type-checks and mirrors the test repository, and the two SQL functions it calls were checked live. But it has **not been run through the real supabase-js client against the live API**, and neither has sign-in itself: the build environment cannot reach Supabase. Do the live check in NEXT_STEPS B2 (create, list, settle, dashboard, second user sees nothing). Pay attention to the embedded `bet_selections(*)` select and the `count: "exact"` paging.
+- Email confirmation and the sign-in pages have only been built and compiled, not clicked through against real Supabase Auth.
+- `npm audit` reports dev-only findings in Vitest 2.x and its dependencies (esbuild, tinypool). They do not ship in the app; upgrading Vitest to a current major is a small separate task.
 
 ## Not built yet
 
@@ -85,6 +91,6 @@ Do not start the slip parser or any AI work until the tracker works end to end.
 
 ## Repo notes
 
-- The Next.js app is not scaffolded yet. `package.json` and `tsconfig.json` at the root are only for running the engine, services and database tests. When the app is created, merge Vitest and TypeScript into the app's own config rather than keeping two copies.
+- The Next.js app lives at the repo root together with the engine and tests (one `package.json`, one `tsconfig.json`). TypeScript is kept on 5.x on purpose.
 - Real secrets go in `.env.local` (gitignored). Variable names are in `.env.example`. Only the project URL and the publishable key (`sb_publishable_...`) may appear in browser code. The secret key (`sb_secret_...`) stays server-side and never goes in git or chat.
 - Work on short branches (e.g. `feat/api-layer`) and open a pull request into `main`.
