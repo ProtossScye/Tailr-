@@ -327,7 +327,7 @@ describe("updateBet", () => {
     await expect(updateBet(deps, "nope", { notes: "x" })).rejects.toThrow(NotFoundError);
   });
 
-  it("a won bet's stake can be lowered but not raised above what it returned", async () => {
+  it("a won bet's stake can be lowered but not raised to what it returned or above", async () => {
     const { deps } = await freshUser();
     const bet = await createBet(deps, betInput({ stakeMinor: 500000 }));
     await settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 900000 });
@@ -335,10 +335,14 @@ describe("updateBet", () => {
     const lowered = await updateBet(deps, bet.id, { stakeMinor: 300000 });
     expect(lowered.netProfitMinor).toBe(600000);
 
-    const issues = await validationIssues(updateBet(deps, bet.id, { stakeMinor: 900001 }));
-    expect(issues.stakeMinor).toMatch(/won/);
-    expect(issues.stakeMinor).toContain("₦9,000.00");
+    // Raising the stake to exactly the return would make it a void, so that is refused too.
+    for (const stakeMinor of [900000, 900001]) {
+      const issues = await validationIssues(updateBet(deps, bet.id, { stakeMinor }));
+      expect(issues.stakeMinor).toMatch(/won/);
+      expect(issues.stakeMinor).toContain("₦9,000.00");
+    }
     expect((await getBet(deps, bet.id)).stakeMinor).toBe(300000);
+    expect((await updateBet(deps, bet.id, { stakeMinor: 899999 })).netProfitMinor).toBe(1);
   });
 
   it("a bet cannot be moved to after the time it was settled", async () => {
@@ -393,10 +397,16 @@ describe("settleBet", () => {
     expect((await getBet(deps, bet.id)).status).toBe("pending");
   });
 
-  it("a win that returns exactly the stake is accepted and counts as a win with zero profit", async () => {
+  it("a win that returns exactly the stake is refused and must be recorded as void", async () => {
     const { deps } = await freshUser();
     const bet = await createBet(deps, betInput({ stakeMinor: 500000 }));
-    expect(await settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 500000 })).toMatchObject({ status: "won", netProfitMinor: 0 });
+    const issues = await validationIssues(settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 500000 }));
+    expect(issues.grossReturnMinor).toMatch(/void/);
+    expect((await getBet(deps, bet.id)).status).toBe("pending");
+    // The smallest valid win is one minor unit above the stake.
+    expect(await settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 500001 })).toMatchObject({ status: "won", netProfitMinor: 1 });
+    // Recording it as void works and counts towards nothing.
+    expect(await settleBet(deps, bet.id, { outcome: "void" })).toMatchObject({ status: "void", netProfitMinor: 0 });
   });
 
   it("won needs a return, and the outcome must be one of the three", async () => {

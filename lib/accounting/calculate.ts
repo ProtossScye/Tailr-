@@ -22,10 +22,11 @@ function assertValidBet(bet: Bet): void {
         throw new AccountingError(`Won bet ${bet.id} needs a gross return`);
       }
       assertValidReturn(bet.grossReturnMinor);
-      // V1 has no partial/half-win support: a win must return at least the stake.
-      if (bet.grossReturnMinor < bet.stakeMinor) {
+      // V1 has no partial/half-win support, and a bet that only returns its stake is void:
+      // a win must return MORE than the stake.
+      if (bet.grossReturnMinor <= bet.stakeMinor) {
         throw new AccountingError(
-          `Won bet ${bet.id} returns less than its stake; partial returns are not supported`,
+          `Won bet ${bet.id} must return more than its stake; a bet that returns the stake or less is void`,
         );
       }
       break;

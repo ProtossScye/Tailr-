@@ -42,7 +42,7 @@ const { byCurrency } = await getDashboardStats(deps); // one summary per currenc
 
 - Money is integer minor units (kobo, cents). Dates are `Date` objects or ISO strings **with a timezone**; a zone-less string is rejected because it would be read in the server's timezone.
 - Placement and settlement times cannot be more than 5 minutes in the future.
-- A bet that pays back less than its stake is recorded as `void`, not `won`.
+- A bet that pays back its stake or less is recorded as `void`, not `won` (a win must return more than the stake).
 - Impossible dates such as `2026-02-30` are rejected (JavaScript would quietly turn them into March 2).
 - The dashboard reads **every** bet, page by page. Supabase returns at most 1,000 rows per request without saying it stopped early, so the repository also asks for the total and refuses to return incomplete data.
 

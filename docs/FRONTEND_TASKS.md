@@ -83,13 +83,13 @@ Closing line for all tasks: *Before finishing, run `npm test`, `npm run typechec
 
 **Task:** From Bet History, let the user settle a bet as won, lost or void, edit its details, and delete it.
 
-**Context:** A bet that pays back less than its stake must be recorded as **void**, not won. Settling works on any bet, so mistakes can be corrected by settling again.
+**Context:** A bet that pays back its stake or less must be recorded as **void**, not won. Settling works on any bet, so mistakes can be corrected by settling again.
 
 **Read first:** `docs/NEXT_STEPS.md`, `lib/services/README.md` ("Rules worth knowing"), `docs/STATUS.md` ("Decisions made").
 
 **Acceptance criteria:**
 - Settle won asks for the **total return including stake** and sends `grossReturnMinor`; lost and void need no amount.
-- Show the server's validation message if a won return is below the stake, and suggest void.
+- Show the server's validation message if a won return is equal to or below the stake, and suggest void. A win must return MORE than the stake.
 - Edit uses `PATCH`; the result cannot be changed there.
 - Delete asks for confirmation. After each action the list updates.
 

@@ -13,7 +13,7 @@ Pure TypeScript. No database, framework, UI or network. Nothing in this folder i
 
 | Rule | Decision |
 | --- | --- |
-| Win | net profit = gross return − stake. Gross return must be ≥ stake. |
+| Win | net profit = gross return − stake. Gross return must be > stake (a bet returning exactly its stake is void). |
 | Loss | net profit = −stake |
 | Void | net profit = 0. **Excluded from ROI denominator and win rate.** Counted in `voids` for display. |
 | Pending | Excluded from P/L, ROI and win rate. Reported as `pendingCount` / `pendingStakeMinor`. Not filtered by date range. |
@@ -22,7 +22,7 @@ Pure TypeScript. No database, framework, UI or network. Nothing in this folder i
 | Date filter | By **settlement date**, half-open `[start, end)`. |
 | Lagos days | UTC+1, no daylight saving. A Lagos day runs 23:00 UTC → 23:00 UTC. |
 | Cash-out | Not supported. Accounting must be defined before it is added. |
-| Partial / half wins | Not supported. A "won" bet returning less than its stake throws. |
+| Partial / half wins | Not supported. A "won" bet returning its stake or less throws; record it as void. |
 
 ## API
 

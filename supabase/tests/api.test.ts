@@ -179,6 +179,10 @@ describe("update, settle, delete", () => {
     const res = await handleSettleBet(deps, req("POST", "/x", { outcome: "won", grossReturnMinor: 100 }), json.data.id);
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toMatch(/void/i);
+    // Exactly the stake (500000) is also a void, not a win.
+    const exact = await handleSettleBet(deps, req("POST", "/x", { outcome: "won", grossReturnMinor: 500000 }), json.data.id);
+    expect(exact.status).toBe(400);
+    expect(JSON.stringify(await exact.json())).toMatch(/void/i);
   });
 
   it("cannot change the result through PATCH", async () => {

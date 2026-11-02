@@ -101,10 +101,10 @@ export async function updateBet(deps: ServiceDeps, id: string, input: UpdateBetI
   const currency: Currency = patch.currency ?? existing.currency;
   const placedAt = patch.placed_at !== undefined ? new Date(patch.placed_at) : existing.placedAt;
 
-  if (existing.status === "won" && existing.grossReturnMinor !== null && stake > existing.grossReturnMinor) {
+  if (existing.status === "won" && existing.grossReturnMinor !== null && stake >= existing.grossReturnMinor) {
     issues.add(
       "stakeMinor",
-      `This bet is marked as won with a return of ${formatMoney(existing.grossReturnMinor, currency)}. A won bet can't return less than its stake. Settle it again first if the result changed.`,
+      `This bet is marked as won with a return of ${formatMoney(existing.grossReturnMinor, currency)}. A won bet must return more than its stake. Settle it again first if the result changed.`,
     );
   }
   if (existing.settledAt !== null && placedAt.getTime() > existing.settledAt.getTime()) {
@@ -128,10 +128,10 @@ export async function settleBet(deps: ServiceDeps, id: string, input: SettleBetI
   const existing = toBetView(await loadOrThrow(deps, id));
 
   const issues = new Issues();
-  if (parsed.outcome === "won" && parsed.grossReturnMinor !== null && parsed.grossReturnMinor < existing.stakeMinor) {
+  if (parsed.outcome === "won" && parsed.grossReturnMinor !== null && parsed.grossReturnMinor <= existing.stakeMinor) {
     issues.add(
       "grossReturnMinor",
-      `The stake was ${formatMoney(existing.stakeMinor, existing.currency)}. A bet that returns less than its stake should be recorded as void, not won.`,
+      `The stake was ${formatMoney(existing.stakeMinor, existing.currency)}. A bet that returns its stake or less should be recorded as void, not won.`,
     );
   }
 

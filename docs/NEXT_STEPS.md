@@ -47,7 +47,7 @@ console.log(await fetch("/api/dashboard").then(j));
 Check: the bet has its leg, settle gives `netProfitMinor: 400000`, the list shows it, the dashboard shows NGN profit 400000. Then sign up a **second** account in a private window and confirm `/api/bets` returns an empty list there and `/api/bets/<first user's id>` returns 404.
 If anything fails, note the error and fix `supabase-repository.ts` (look at the embedded `bet_selections(*)` select and the `count: "exact"` paging first). Delete the test bets afterwards (`DELETE /api/bets/:id`).
 
-**B3. Decide the open question** (see "Open questions" in `STATUS.md`): should a "won" bet that returns exactly its stake count as a win? Tell whoever owns the engine; it is one line each in the engine, database and service.
+**B3. Decided:** a "won" bet must return more than its stake; returning exactly the stake (or less) is recorded as void. Nothing to do.
 
 **B4. Before real users:** switch Confirm email on, add real SMTP, set the real Site URL and redirect URLs, and deploy (Vercel suggested). Add the same two environment variables there.
 

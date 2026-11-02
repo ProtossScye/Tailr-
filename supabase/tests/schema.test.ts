@@ -52,9 +52,9 @@ describe("bets accept valid rows", () => {
       insertBet({ status: "won", settled_at: "2026-10-16T12:00:00Z", gross_return_minor: 900000 }),
     ).resolves.toBeTruthy();
   });
-  it("won returning exactly the stake", async () => {
+  it("won returning one minor unit more than the stake", async () => {
     await expect(
-      insertBet({ status: "won", settled_at: "2026-10-16T12:00:00Z", gross_return_minor: 500000 }),
+      insertBet({ status: "won", settled_at: "2026-10-16T12:00:00Z", gross_return_minor: 500001 }),
     ).resolves.toBeTruthy();
   });
   it("lost and void", async () => {
@@ -96,6 +96,11 @@ describe("bets reject bad rows", () => {
   });
   it("won without a gross return", async () => {
     await expect(insertBet({ status: "won", settled_at: "2026-10-16T12:00:00Z" })).rejects.toThrow();
+  });
+  it("won returning exactly the stake (that is a void)", async () => {
+    await expect(
+      insertBet({ status: "won", settled_at: "2026-10-16T12:00:00Z", gross_return_minor: 500000 }),
+    ).rejects.toThrow();
   });
   it("won returning less than the stake (partial returns unsupported)", async () => {
     await expect(

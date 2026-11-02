@@ -54,8 +54,11 @@ describe("netProfitMinor", () => {
   it("pending = null (excluded)", () => {
     expect(netProfitMinor(bet({ status: "pending", stakeMinor: 300_000 }))).toBeNull();
   });
-  it("a win that returns exactly the stake is 0 profit", () => {
-    expect(netProfitMinor(bet({ status: "won", stakeMinor: 1_000, grossReturnMinor: 1_000 }))).toBe(0);
+  it("a win that returns one minor unit more than the stake is the smallest valid win", () => {
+    expect(netProfitMinor(bet({ status: "won", stakeMinor: 1_000, grossReturnMinor: 1_001 }))).toBe(1);
+  });
+  it("a win that returns exactly the stake is rejected: it is a void", () => {
+    expect(() => netProfitMinor(bet({ status: "won", stakeMinor: 1_000, grossReturnMinor: 1_000 }))).toThrow(/more than its stake/);
   });
 });
 
@@ -293,7 +296,7 @@ describe("invalid input throws AccountingError", () => {
 
   it("won bet returning less than its stake (partial returns unsupported)", () => {
     expect(() => netProfitMinor(bet({ status: "won", stakeMinor: 1_000, grossReturnMinor: 500 }))).toThrow(
-      /partial/,
+      /more than its stake/,
     );
   });
 

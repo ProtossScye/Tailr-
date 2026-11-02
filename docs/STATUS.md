@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-01 (API layer and sign-in added). Update this at the end of every work session.
+Last updated: 2026-11-03 (won-bet rule changed; API layer and sign-in added). Update this at the end of every work session.
 
 ## Done
 
@@ -17,7 +17,7 @@ Last updated: 2026-11-01 (API layer and sign-in added). Update this at the end o
   - Two database functions, `create_bet` and `update_bet`, so a bet and its legs are saved together or not at all. They run as the signed-in user (not the database owner), take the owner from the session never from the input, and always create bets as pending.
   - Hand-written input validation that reports every problem at once, field by field, ready for forms.
   - `lib/services/supabase-repository.ts` connects the services to Supabase.
-- **363 tests pass** with a clean strict typecheck: 103 engine, 34 schema, 44 access, 20 database functions, 43 services, 74 validation, 17 paging, 28 API handlers. The database tests run every migration on an in-memory Postgres (PGlite) with Supabase's pieces stubbed (`supabase/tests/helpers.ts`), and the services run the real SQL under the signed-in role.
+- **365 tests pass** with a clean strict typecheck: 103 engine, 34 schema, 44 access, 20 database functions, 43 services, 74 validation, 17 paging, 28 API handlers (the won-bet rule was break-tested in all four places). The database tests run every migration on an in-memory Postgres (PGlite) with Supabase's pieces stubbed (`supabase/tests/helpers.ts`), and the services run the real SQL under the signed-in role.
 - **Break-tested:** 17 deliberate weakenings of the privacy rules and 24 of the services and new functions are all caught. Both rounds first missed something (10 of 17, then 23 of 24), and each gap got a new test: update and delete rules need no-`WHERE` tests, and "is there a next page" needs a test where the last page is exactly full.
 - **Bug found and fixed while testing:** JavaScript quietly turns `2026-02-30` into March 2, which would have saved a bet on the wrong day. Impossible dates are now rejected.
 - **Live check on the real project** (rolled back, no data left behind): two users each created bets; one cannot edit or overwrite the other's bet or legs; owner, status and return cannot be smuggled in; a bad leg rolls back everything; signed-out visitors cannot call the functions. Supabase's security advisor shows no findings.
@@ -37,7 +37,7 @@ Last updated: 2026-11-01 (API layer and sign-in added). Update this at the end o
 - **Pending** bets: excluded from P/L, ROI and win rate; reported separately and not filtered by date range.
 - ROI and win rate are `null` (shown as "n/a"), never NaN, when the denominator is 0.
 - Date filters use **settlement date**, half-open `[start, end)`. Lagos is UTC+1 with no daylight saving.
-- **No cash-out. No partial or half-win returns** (decided 2026-10-30): a bet that pays back less than its stake is recorded as void. A "won" bet returning less than its stake is rejected by the engine, the database and the service (which tells the user to record it as void).
+- **No cash-out. No partial or half-win returns** (decided 2026-10-30): a bet that pays back less than its stake is recorded as void. A "won" bet must return **more than** its stake (decided 2026-11-03): a bet returning exactly its stake, or less, counts towards nothing and is recorded as void. This is enforced by the engine, the database (migration `20261102231741_won_must_return_more_than_stake`) and the service, which tells the user to record it as void. A won bet's stake also cannot be edited up to its return or above.
 - Nothing is rounded inside calculations; rounding happens only in the display helpers.
 - **Net profit is not stored** in the database. It is always derived by `lib/accounting` from stake and gross return, so there is one source of truth. (`05_DATA_MODEL.md` lists `net_profit` and decimal money fields; the schema as built supersedes it.)
 - Region: Supabase has no African region, so the project is in Ireland.
@@ -58,7 +58,7 @@ Last updated: 2026-11-01 (API layer and sign-in added). Update this at the end o
 | `create_bet(p_bet, p_selections)` | Creates a pending bet and its legs atomically; owner from the session |
 | `update_bet(p_id, p_patch, p_selections)` | Updates the keys present (null clears) and optionally replaces legs, atomically; returns false for a bet that is missing or not the caller's |
 
-Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return at least equal to the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `slip_draft_id` on `bets` is deliberately left out until slip tables exist.
+Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return strictly greater than the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `slip_draft_id` on `bets` is deliberately left out until slip tables exist.
 
 ## Next
 
@@ -87,7 +87,7 @@ Do not start the slip parser or any AI work until the tracker works end to end.
 
 ## Open questions
 
-- A "won" bet that returns exactly its stake is currently accepted and counts as a win with zero profit (and counts in win rate). Since a bet that returns only the stake is effectively void, should it be required to return strictly more than the stake? Not urgent; the change is one line each in the engine, the database and the service.
+None right now.
 
 ## Repo notes
 
