@@ -120,6 +120,7 @@ describe("valuesFromBet", () => {
       netProfitMinor: null,
       provenance: "user_reported",
       notes: "note",
+      slipDraftId: null,
       selections: [
         { id: "b", sport: null, event: "Second", marketType: null, selection: "S2", oddsDecimal: null, sortOrder: 1 },
         { id: "a", sport: "Tennis", event: "First", marketType: "Winner", selection: "S1", oddsDecimal: 1.7, sortOrder: 0 },

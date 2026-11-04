@@ -19,7 +19,7 @@ import {
   type LegValues,
 } from "@/lib/client/bet-form";
 import { isoToLagosLocal } from "@/lib/client/dates";
-import { loadDrafts } from "@/lib/client/drafts";
+import { fetchSlip } from "@/lib/client/slips";
 import { ChevronLeftIcon, PlusIcon } from "@/components/icons";
 import { ErrorState, LoadingBlock, Segmented } from "@/components/ui";
 
@@ -64,6 +64,8 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
   const [saving, setSaving] = useState(false);
   const [fromDraft, setFromDraft] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  // Set only after the draft loaded. Sent with the bet once the person confirms they placed it.
+  const [linkedDraft, setLinkedDraft] = useState<string | null>(null);
   const [maxPlaced, setMaxPlaced] = useState<string | undefined>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -74,13 +76,24 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
   // Bring a saved draft over as a starting point. The person still has to confirm they placed it.
   useEffect(() => {
     if (mode !== "create" || !draftId) return;
-    const draft = loadDrafts().find((d) => d.id === draftId);
-    if (!draft) return;
-    setFromDraft(true);
-    setValues((prev) => ({
-      ...prev,
-      legs: draft.legs.length > 0 ? draft.legs.map((l) => ({ sport: l.sport, event: l.event, market: l.market, selection: l.selection, odds: l.odds })) : prev.legs,
-    }));
+    let cancelled = false;
+    fetchSlip(draftId).then(
+      (draft) => {
+        if (cancelled) return;
+        setFromDraft(true);
+        setLinkedDraft(draft.id);
+        setValues((prev) => ({
+          ...prev,
+          legs: draft.legs.length > 0 ? draft.legs.map((l) => ({ sport: l.sport, event: l.event, market: l.market, selection: l.selection, odds: l.odds })) : prev.legs,
+        }));
+      },
+      () => {
+        if (!cancelled) setErrors({ form: "That draft could not be opened. You can still enter the bet by hand." });
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [mode, draftId]);
 
   const set = <K extends keyof BetFormValues>(key: K, value: BetFormValues[K]) => {
@@ -128,7 +141,7 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
     try {
       const saved =
         mode === "create"
-          ? await api<BetJson>("/api/bets", { method: "POST", body: built.payload })
+          ? await api<BetJson>("/api/bets", { method: "POST", body: linkedDraft && confirmed ? { ...built.payload, slipDraftId: linkedDraft } : built.payload })
           : await api<BetJson>(`/api/bets/${betId}`, { method: "PATCH", body: built.payload });
       router.push(`/bets/${saved.id}?saved=${mode === "create" ? "created" : "updated"}`);
       router.refresh();

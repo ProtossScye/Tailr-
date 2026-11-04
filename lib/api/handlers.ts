@@ -4,14 +4,21 @@ import {
   RepositoryError,
   ValidationError,
   createBet,
+  createSlip,
   deleteBet,
+  deleteSlip,
   getBet,
   getDashboardStats,
+  getSlip,
   listBets,
+  listSlips,
   settleBet,
   updateBet,
+  updateSlip,
   type ServiceDeps,
+  type SlipServiceDeps,
   type ListBetsQuery,
+  type ListSlipsQuery,
 } from "../services";
 import type { BetStatus, Currency } from "../accounting";
 import type { ApiErrorBody } from "./types";
@@ -25,6 +32,7 @@ import type { ApiErrorBody } from "./types";
  * 400 invalid input (with `issues` per field) | 401 not signed in | 404 not found (or not yours) | 500 anything else.
  */
 export type Deps = ServiceDeps | null;
+export type SlipDeps = SlipServiceDeps | null;
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -38,13 +46,13 @@ function fail(status: number, code: ApiErrorBody["error"]["code"], message: stri
 }
 
 /** Runs one request: 401 without a session, and maps service errors to responses. */
-async function run(deps: Deps, work: (deps: ServiceDeps) => Promise<Response>): Promise<Response> {
+async function run<D>(deps: D | null, work: (deps: D) => Promise<Response>): Promise<Response> {
   if (deps === null) return fail(401, "unauthenticated", "Sign in to continue.");
   try {
     return await work(deps);
   } catch (error) {
     if (error instanceof ValidationError) return fail(400, "validation_failed", "Some fields need fixing.", error.issues);
-    if (error instanceof NotFoundError) return fail(404, "not_found", "Bet not found.");
+    if (error instanceof NotFoundError) return fail(404, "not_found", `${error.message}.`);
     // Details stay in the server log. Never send database messages to the browser.
     const detail = error instanceof RepositoryError ? `${error.message} (${error.code ?? "no code"})` : error;
     console.error("[api] unexpected error:", detail);
@@ -73,7 +81,7 @@ async function readJsonObject(request: Request): Promise<Record<string, unknown>
 }
 
 /** Like run(), but first reads the JSON body (400 invalid_json if it is not a JSON object). */
-function withBody(deps: Deps, request: Request, work: (deps: ServiceDeps, body: Record<string, unknown>) => Promise<Response>): Promise<Response> {
+function withBody<D>(deps: D | null, request: Request, work: (deps: D, body: Record<string, unknown>) => Promise<Response>): Promise<Response> {
   return run(deps, async (d) => {
     let body: Record<string, unknown>;
     try {
@@ -148,5 +156,40 @@ export function handleDashboard(deps: Deps, request: Request): Promise<Response>
       }
     }
     return json({ data: await getDashboardStats(d, range ? { range } : {}) });
+  });
+}
+
+// Slip drafts. A draft is never a bet: these routes never create or change one.
+
+export function handleListSlips(deps: SlipDeps, request: Request): Promise<Response> {
+  return run(deps, async (d) => {
+    const p = new URL(request.url).searchParams;
+    const query: ListSlipsQuery = {};
+    const status = p.get("status");
+    if (status !== null) query.status = status as ListSlipsQuery["status"];
+    for (const key of ["limit", "offset"] as const) {
+      const raw = p.get(key);
+      if (raw !== null) query[key] = /^\d+$/.test(raw) ? Number(raw) : Number.NaN;
+    }
+    return json({ data: await listSlips(d, query) });
+  });
+}
+
+export function handleCreateSlip(deps: SlipDeps, request: Request): Promise<Response> {
+  return withBody(deps, request, async (d, body) => json({ data: await createSlip(d, body as Body<Parameters<typeof createSlip>[1]>) }, 201));
+}
+
+export function handleGetSlip(deps: SlipDeps, id: string): Promise<Response> {
+  return run(deps, async (d) => json({ data: await getSlip(d, id) }));
+}
+
+export function handleUpdateSlip(deps: SlipDeps, request: Request, id: string): Promise<Response> {
+  return withBody(deps, request, async (d, body) => json({ data: await updateSlip(d, id, body as Body<Parameters<typeof updateSlip>[2]>) }));
+}
+
+export function handleDeleteSlip(deps: SlipDeps, id: string): Promise<Response> {
+  return run(deps, async (d) => {
+    await deleteSlip(d, id);
+    return json({ data: { deleted: true } });
   });
 }

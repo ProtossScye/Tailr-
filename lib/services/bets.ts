@@ -7,7 +7,7 @@ import {
   type Currency,
   type DateRange,
 } from "../accounting";
-import { NotFoundError } from "./errors";
+import { NotFoundError, ValidationError } from "./errors";
 import { toBetView, toEngineBet } from "./mapping";
 import type { BetRepository } from "./repository";
 import { Issues, isUuid, parseCreate, parseSettle, parseUpdate } from "./validate";
@@ -33,6 +33,11 @@ export interface ServiceDeps {
   now?: () => Date;
 }
 
+function errorCode(error: unknown): string | undefined {
+  if (typeof error === "object" && error !== null && "code" in error) return String((error as { code: unknown }).code);
+  return undefined;
+}
+
 const nowOf = (deps: ServiceDeps): Date => (deps.now ?? (() => new Date()))();
 
 /** Everything from the start of time to the end of time, for "all-time" stats. */
@@ -52,7 +57,17 @@ async function loadOrThrow(deps: ServiceDeps, id: string) {
 /** Adds a new PENDING bet with its legs. Status, owner and return cannot be set here. */
 export async function createBet(deps: ServiceDeps, input: CreateBetInput): Promise<BetView> {
   const { bet, selections } = parseCreate(input, nowOf(deps));
-  const id = await deps.repo.createBet(bet, selections);
+  let id: string;
+  try {
+    id = await deps.repo.createBet(bet, selections);
+  } catch (error) {
+    // The database only accepts a draft the same user owns. A foreign key failure here means the
+    // draft is missing or someone else's; the two look identical on purpose.
+    if (bet.slip_draft_id && errorCode(error) === "23503") {
+      throw new ValidationError([{ field: "slipDraftId", message: "That draft no longer exists" }]);
+    }
+    throw error;
+  }
   const created = await deps.repo.getBet(id);
   if (created === null) throw new Error("The bet was saved but could not be read back");
   return toBetView(created);

@@ -1,6 +1,6 @@
 import { CURRENCIES, type Currency } from "../accounting";
 import { ValidationError, type ValidationIssue } from "./errors";
-import type { BetPatchRecord, NewBetRecord, NewSelectionRecord } from "./repository";
+import type { BetPatchRecord, NewBetRecord, NewSelectionRecord, NewSlipRecord, SlipPatchRecord } from "./repository";
 
 /**
  * Input checking. Every function collects ALL problems before throwing one
@@ -40,7 +40,7 @@ function codePoints(text: string): number {
   return [...text].length;
 }
 
-function requiredText(value: unknown, field: string, max: number, issues: Issues): string | null {
+export function requiredText(value: unknown, field: string, max: number, issues: Issues): string | null {
   if (typeof value !== "string" || value.trim() === "") {
     issues.add(field, "Required");
     return null;
@@ -54,7 +54,7 @@ function requiredText(value: unknown, field: string, max: number, issues: Issues
 }
 
 /** undefined, null and blank all mean "nothing". */
-function optionalText(value: unknown, field: string, max: number, issues: Issues): string | null {
+export function optionalText(value: unknown, field: string, max: number, issues: Issues): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") {
     issues.add(field, "Must be text");
@@ -115,13 +115,13 @@ export function checkNotFuture(date: Date, field: string, now: Date, label: stri
   }
 }
 
-function parseSelections(value: unknown, field: string, issues: Issues): NewSelectionRecord[] | null {
+export function parseSelections(value: unknown, field: string, issues: Issues, noun = "bet"): NewSelectionRecord[] | null {
   if (!Array.isArray(value) || value.length === 0) {
     issues.add(field, "Add at least one selection");
     return null;
   }
   if (value.length > MAX_SELECTIONS) {
-    issues.add(field, `A bet can have at most ${MAX_SELECTIONS} selections`);
+    issues.add(field, `A ${noun} can have at most ${MAX_SELECTIONS} selections`);
     return null;
   }
   const before = issues.list.length;
@@ -162,6 +162,11 @@ export function parseCreate(
   const placedAt = parseInstant(i.placedAt, "placedAt", issues);
   if (placedAt !== null) checkNotFuture(placedAt, "placedAt", now, "Placement time", issues);
   const notes = optionalText(i.notes, "notes", 2000, issues);
+  let slipDraftId: string | null = null;
+  if (i.slipDraftId !== undefined && i.slipDraftId !== null) {
+    if (isUuid(i.slipDraftId)) slipDraftId = i.slipDraftId;
+    else issues.add("slipDraftId", "Not a valid draft");
+  }
   const selections = parseSelections(i.selections, "selections", issues);
   issues.throwIfAny();
 
@@ -173,6 +178,7 @@ export function parseCreate(
       decimal_odds: odds,
       placed_at: (placedAt as Date).toISOString(),
       notes,
+      slip_draft_id: slipDraftId,
     },
     selections: selections as NewSelectionRecord[],
   };
@@ -264,4 +270,71 @@ export function parseSettle(input: unknown, now: Date): ParsedSettle {
 
   issues.throwIfAny();
   return { outcome: outcome as ParsedSettle["outcome"], grossReturnMinor, settledAt };
+}
+
+// Slip drafts ---------------------------------------------------------------------------
+
+const MAX_SLIP_NAME = 120;
+
+/** "Arsenal v Chelsea", or "Arsenal v Chelsea +2" when there are more legs. Never longer than the name limit. */
+export function defaultSlipName(selections: NewSelectionRecord[]): string {
+  const extra = selections.length - 1;
+  const suffix = extra > 0 ? ` +${extra}` : "";
+  const first = [...(selections[0]?.event ?? "Slip")].slice(0, MAX_SLIP_NAME - suffix.length).join("");
+  return `${first}${suffix}`;
+}
+
+export function parseCreateSlip(input: unknown): { slip: NewSlipRecord; selections: NewSelectionRecord[] } {
+  const issues = new Issues();
+  if (!isPlainObject(input)) {
+    issues.add("input", "Expected an object");
+    issues.throwIfAny();
+  }
+  const i = input as Record<string, unknown>;
+
+  const name = optionalText(i.name, "name", MAX_SLIP_NAME, issues);
+  const bookmaker = optionalText(i.sourceBookmaker, "sourceBookmaker", 80, issues);
+  const selections = parseSelections(i.selections, "selections", issues, "slip");
+  issues.throwIfAny();
+
+  const records = selections as NewSelectionRecord[];
+  return { slip: { name: name ?? defaultSlipName(records), source_bookmaker: bookmaker }, selections: records };
+}
+
+export interface ParsedSlipUpdate {
+  patch: SlipPatchRecord;
+  selections: NewSelectionRecord[] | undefined;
+}
+
+export function parseUpdateSlip(input: unknown): ParsedSlipUpdate {
+  const issues = new Issues();
+  if (!isPlainObject(input)) {
+    issues.add("input", "Expected an object");
+    issues.throwIfAny();
+  }
+  const i = input as Record<string, unknown>;
+  const has = (key: string) => key in i && i[key] !== undefined;
+
+  const patch: SlipPatchRecord = {};
+  let selections: NewSelectionRecord[] | undefined;
+
+  if (has("name")) {
+    const v = requiredText(i.name, "name", MAX_SLIP_NAME, issues);
+    if (v !== null) patch.name = v;
+  }
+  if (has("sourceBookmaker")) patch.source_bookmaker = optionalText(i.sourceBookmaker, "sourceBookmaker", 80, issues);
+  if (has("status")) {
+    if (i.status === "draft" || i.status === "archived") patch.status = i.status;
+    else issues.add("status", "Choose draft or archived");
+  }
+  if (has("selections")) {
+    const v = parseSelections(i.selections, "selections", issues, "slip");
+    if (v !== null) selections = v;
+  }
+
+  if (Object.keys(patch).length === 0 && selections === undefined && issues.list.length === 0) {
+    issues.add("input", "Nothing to update");
+  }
+  issues.throwIfAny();
+  return { patch, selections };
 }

@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { formatMoney, formatPercent, type Currency } from "@/lib/accounting";
 import type { BetJson, DashboardJson } from "@/lib/api/types";
 import { greeting, previousRange, rangeFor, type RangeFilter } from "@/lib/client/dates";
-import { loadDrafts, type SlipDraft } from "@/lib/client/drafts";
-import { useAllBets, useDashboard } from "@/lib/client/hooks";
+import type { SlipDraft } from "@/lib/client/drafts";
+import { useAllBets, useDashboard, useSlips, type Loadable } from "@/lib/client/hooks";
 import { MIN_BETS_FOR_RATES, UNSPECIFIED, bookmakerOf, cumulativeSeries, groupBets, settledBetween, type Bucket } from "@/lib/client/stats";
 import { BellIcon, BetsIcon, ChevronRightIcon, LogoMark, PlusIcon, SlipArt } from "@/components/icons";
 import { ProfitChart } from "@/components/profit-chart";
@@ -32,11 +32,10 @@ export function HomeView() {
   const [filter, setFilter] = useState<RangeFilter>("30d");
   const [currencyChoice, setCurrencyChoice] = useState<Currency | null>(null);
   const [feed, setFeed] = useState<"placed" | "settled" | "drafts">("placed");
-  const [drafts, setDrafts] = useState<SlipDraft[]>([]);
+  const [slips, reloadSlips] = useSlips();
 
   useEffect(() => {
     setHello(greeting());
-    setDrafts(loadDrafts());
   }, []);
 
   const [bets, reloadBets] = useAllBets();
@@ -101,7 +100,8 @@ export function HomeView() {
           setCurrencyChoice={setCurrencyChoice}
           feed={feed}
           setFeed={setFeed}
-          drafts={drafts}
+          slips={slips}
+          reloadSlips={reloadSlips}
         />
       )}
 
@@ -146,7 +146,8 @@ function Overview({
   setCurrencyChoice,
   feed,
   setFeed,
-  drafts,
+  slips,
+  reloadSlips,
 }: {
   bets: BetJson[];
   filter: RangeFilter;
@@ -158,7 +159,8 @@ function Overview({
   setCurrencyChoice: (c: Currency) => void;
   feed: "placed" | "settled" | "drafts";
   setFeed: (f: "placed" | "settled" | "drafts") => void;
-  drafts: SlipDraft[];
+  slips: Loadable<SlipDraft[]>;
+  reloadSlips: () => void;
 }) {
   const present = (["NGN", "USD"] as const).filter((c) => bets.some((b) => b.currency === c));
   const currency: Currency = currencyChoice && present.includes(currencyChoice) ? currencyChoice : (present[0] ?? "NGN");
@@ -294,10 +296,14 @@ function Overview({
           ]}
         />
         {feed === "drafts" ? (
-          drafts.length === 0 ? (
+          slips.state === "loading" ? (
+            <LoadingBlock label="Loading drafts" rows={2} />
+          ) : slips.state === "error" ? (
+            <ErrorState message={slips.message} onRetry={reloadSlips} />
+          ) : slips.data.length === 0 ? (
             <div className="card card-pad stack">
-              <p>No slip drafts on this device.</p>
-              <p className="muted">Drafts you save in Create stay on this device until slips can be saved to your account.</p>
+              <p>No slip drafts yet.</p>
+              <p className="muted">Drafts you save in Create are kept in your account. A draft is not a placed bet.</p>
               <span>
                 <Link href="/create" className="btn btn-small">
                   Create a slip
@@ -306,7 +312,7 @@ function Overview({
             </div>
           ) : (
             <ul className="card list">
-              {drafts.slice(0, 5).map((draft) => (
+              {slips.data.slice(0, 5).map((draft) => (
                 <li key={draft.id}>
                   <Link href={`/create?draft=${draft.id}`} className="settings-row">
                     <span>

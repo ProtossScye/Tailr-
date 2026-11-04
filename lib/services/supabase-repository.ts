@@ -7,9 +7,16 @@ import type {
   BetRow,
   BetWithSelections,
   ListQuery,
+  ListSlipsQuery,
   NewBetRecord,
   NewSelectionRecord,
+  NewSlipRecord,
   SelectionRow,
+  SlipPatchRecord,
+  SlipRepository,
+  SlipRow,
+  SlipSelectionRow,
+  SlipWithSelections,
   StatsBetRow,
 } from "./repository";
 
@@ -84,6 +91,54 @@ export function createSupabaseBetRepository(client: SupabaseClient): BetReposito
     async deleteBet(id: string) {
       const { data, error } = await client.from("bets").delete().eq("id", id).select("id");
       if (error) throw new RepositoryError("deleteBet", error);
+      return (data ?? []).length > 0;
+    },
+  };
+}
+
+type EmbeddedSlip = SlipRow & { slip_selections: SlipSelectionRow[] | null };
+
+function splitSlip(row: EmbeddedSlip): SlipWithSelections {
+  const { slip_selections, ...slip } = row;
+  return { slip, selections: [...(slip_selections ?? [])].sort((a, b) => a.sort_order - b.sort_order) };
+}
+
+/** Same rule as the bet repository: pass a client signed in AS THE USER, never the secret key. */
+export function createSupabaseSlipRepository(client: SupabaseClient): SlipRepository {
+  return {
+    async createSlip(slip: NewSlipRecord, selections: NewSelectionRecord[]) {
+      const { data, error } = await client.rpc("create_slip", { p_slip: slip, p_selections: selections });
+      if (error) throw new RepositoryError("createSlip", error);
+      if (typeof data !== "string") throw new RepositoryError("createSlip", "No id returned");
+      return data;
+    },
+
+    async getSlip(id: string) {
+      const { data, error } = await client.from("slip_drafts").select("*, slip_selections(*)").eq("id", id).maybeSingle();
+      if (error) throw new RepositoryError("getSlip", error);
+      return data === null ? null : splitSlip(data as unknown as EmbeddedSlip);
+    },
+
+    async listSlips(query: ListSlipsQuery) {
+      let request = client.from("slip_drafts").select("*, slip_selections(*)");
+      if (query.status) request = request.eq("status", query.status);
+      const { data, error } = await request
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: true })
+        .range(query.offset, query.offset + query.limit - 1);
+      if (error) throw new RepositoryError("listSlips", error);
+      return ((data ?? []) as unknown as EmbeddedSlip[]).map(splitSlip);
+    },
+
+    async updateSlip(id: string, patch: SlipPatchRecord, selections?: NewSelectionRecord[]) {
+      const { data, error } = await client.rpc("update_slip", { p_id: id, p_patch: patch, p_selections: selections ?? null });
+      if (error) throw new RepositoryError("updateSlip", error);
+      return data === true;
+    },
+
+    async deleteSlip(id: string) {
+      const { data, error } = await client.from("slip_drafts").delete().eq("id", id).select("id");
+      if (error) throw new RepositoryError("deleteSlip", error);
       return (data ?? []).length > 0;
     },
   };

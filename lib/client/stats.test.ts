@@ -36,6 +36,7 @@ function bet(overrides: Partial<BetJson> & { status: BetJson["status"] }): BetJs
     netProfitMinor: null,
     provenance: "user_reported",
     notes: null,
+    slipDraftId: null,
     selections: [{ id: `s-${counter}`, sport: null, event: "A v B", marketType: null, selection: "A", oddsDecimal: null, sortOrder: 0 }],
     createdAt: "2026-11-01T10:00:00Z",
     updatedAt: "2026-11-01T10:00:00Z",

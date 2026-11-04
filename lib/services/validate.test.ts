@@ -24,6 +24,23 @@ function issuesOf(fn: () => unknown): Record<string, string> {
   throw new Error("expected a ValidationError but nothing was thrown");
 }
 
+describe("parseCreate: slipDraftId", () => {
+  const draft = "7f9c2b1e-3a4d-4e5f-8a6b-1c2d3e4f5a6b";
+
+  it("passes a valid draft id through", () => {
+    expect(parseCreate({ ...valid(), slipDraftId: draft }, NOW).bet.slip_draft_id).toBe(draft);
+  });
+
+  it("treats undefined and null as no draft", () => {
+    expect(parseCreate({ ...valid(), slipDraftId: null }, NOW).bet.slip_draft_id).toBeNull();
+    expect(parseCreate(valid(), NOW).bet.slip_draft_id).toBeNull();
+  });
+
+  it.each(["nope", 5, "", {}])("rejects %j", (bad) => {
+    expect(issuesOf(() => parseCreate({ ...valid(), slipDraftId: bad }, NOW))).toHaveProperty("slipDraftId");
+  });
+});
+
 describe("parseCreate: good input", () => {
   it("accepts the minimum and turns it into database records", () => {
     const { bet, selections } = parseCreate(valid(), NOW);
@@ -34,6 +51,7 @@ describe("parseCreate: good input", () => {
       decimal_odds: null,
       placed_at: "2026-10-30T12:00:00.000Z",
       notes: null,
+      slip_draft_id: null,
     });
     expect(selections).toEqual([
       { sport: null, event: "Arsenal vs Chelsea", market_type: null, selection: "Arsenal -1", odds_decimal: null },
@@ -83,7 +101,7 @@ describe("parseCreate: good input", () => {
       { ...valid(), userId: "someone-else", user_id: "someone-else", status: "won", grossReturnMinor: 99, settledAt: "2026-10-30T12:00:00Z", provenance: "verified" },
       NOW,
     );
-    expect(Object.keys(bet).sort()).toEqual(["bookmaker_label", "currency", "decimal_odds", "notes", "placed_at", "stake_minor"]);
+    expect(Object.keys(bet).sort()).toEqual(["bookmaker_label", "currency", "decimal_odds", "notes", "placed_at", "slip_draft_id", "stake_minor"]);
   });
 });
 

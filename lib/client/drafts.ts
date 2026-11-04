@@ -1,6 +1,7 @@
 /**
- * Slip drafts live on this device only (localStorage). The backend has no slip tables yet, so a
- * draft is never sent anywhere and never becomes a bet by itself: recording a placed bet is a
+ * Legacy: slip drafts used to live on this device only (localStorage). They now save to the account
+ * (lib/client/slips.ts); this file remains to read and clear any left over, and for draftToText. A
+ * draft never becomes a bet by itself: recording a placed bet is a
  * separate, explicit step in the Add bet form.
  */
 
