@@ -14,6 +14,7 @@ import {
   getSlip,
   listBets,
   listSlips,
+  readSlipText,
   savePreferences,
   settleBet,
   updateBet,
@@ -212,4 +213,12 @@ export function handleSavePreferences(deps: PreferencesDeps, request: Request): 
 
 export function handleClearPreferences(deps: PreferencesDeps): Promise<Response> {
   return run(deps, async (d) => json({ data: await clearPreferences(d) }));
+}
+
+/**
+ * Reads pasted slip text into a draft for review. Needs a signed-in user, but touches no stored data:
+ * nothing is saved and the text is not kept or logged.
+ */
+export function handleParseSlip(deps: SlipDeps, request: Request): Promise<Response> {
+  return withBody(deps, request, async (_d, body) => json({ data: readSlipText(body) }));
 }

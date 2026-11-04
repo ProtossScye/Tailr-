@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseOdds } from "@/lib/client/money";
 import { messageFor } from "@/lib/client/api";
+import type { ParsedSlipJson } from "@/lib/api/types";
+import { CONFIDENCE_LABEL, MAX_PASTE_CHARS, isComplete, missingNote, parsePastedText, toDraftLeg } from "@/lib/client/parse";
 import { usePreferences } from "@/lib/client/hooks";
 import { draftToText, loadDrafts, type DraftLeg, type SlipDraft } from "@/lib/client/drafts";
 import { deleteSlip, fetchSlip, fetchSlips, moveLocalDraftsToAccount, saveSlip } from "@/lib/client/slips";
@@ -32,6 +34,10 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [name, setName] = useState("");
   // Adapt mode
   const [pasted, setPasted] = useState("");
+  const [review, setReview] = useState<ParsedSlipJson | null>(null);
+  const [reading, setReading] = useState(false);
+  const [foundCount, setFoundCount] = useState(0);
+  const [readError, setReadError] = useState<string | null>(null);
   const [targetMin, setTargetMin] = useState("");
   const [targetMax, setTargetMax] = useState("");
   const [preferred, setPreferred] = useState<string[]>([]);
@@ -221,6 +227,49 @@ export function CreateView({ draftId }: { draftId?: string }) {
     }
   };
 
+  const readText = async () => {
+    if (pasted.trim() === "" || reading) return;
+    setReading(true);
+    setReadError(null);
+    setReview(null);
+    try {
+      const result = await parsePastedText(pasted);
+      setFoundCount(result.selections.length);
+      setReview(result);
+    } catch (error) {
+      setReadError(messageFor(error));
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const completeRows = review ? review.selections.filter(isComplete) : [];
+
+  const addReadSelections = () => {
+    if (!review) return;
+    const room = MAX_LEGS - legs.length;
+    const toAdd = completeRows.slice(0, Math.max(room, 0)).map(toDraftLeg);
+    if (toAdd.length === 0) {
+      setNotice(`A slip can have at most ${MAX_LEGS} selections.`);
+      return;
+    }
+    setLegs((prev) => [...prev, ...toAdd]);
+    setReview((prev) => (prev ? { ...prev, selections: prev.selections.filter((sel) => !isComplete(sel)) } : prev));
+    setNotice(
+      `Added ${toAdd.length} ${toAdd.length === 1 ? "selection" : "selections"} from your text${toAdd.length < completeRows.length ? ` (the slip is full, ${completeRows.length - toAdd.length} not added)` : ""}. Check each one below against your slip.`,
+    );
+  };
+
+  const fillIn = (index: number) => {
+    const row = review?.selections[index];
+    if (!row) return;
+    setComposer(toDraftLeg(row));
+    setEditing(null);
+    setComposerErrors({});
+    setReview((prev) => (prev ? { ...prev, selections: prev.selections.filter((_, i) => i !== index) } : prev));
+    document.getElementById("composer-event")?.focus();
+  };
+
   const togglePreferred = (market: string) =>
     setPreferred((prev) => (prev.some((m) => m.toLowerCase() === market.toLowerCase()) ? prev.filter((m) => m.toLowerCase() !== market.toLowerCase()) : [...prev, market]));
 
@@ -262,20 +311,129 @@ export function CreateView({ draftId }: { draftId?: string }) {
             Your slip
           </h2>
           <div className="field">
-            <label htmlFor="pasted">Paste the slip text to keep it in view</label>
+            <label htmlFor="pasted">Paste the slip text</label>
             <textarea
               id="pasted"
               className="textarea"
               value={pasted}
               onChange={(e) => setPasted(e.target.value)}
               placeholder="Paste a slip from a chat or post"
+              maxLength={MAX_PASTE_CHARS}
               style={{ minHeight: 120 }}
             />
             <span className="hint">
-              Reading selections out of pasted text and screenshots is not available yet. Copy each selection into the form below so you can check
-              it. Nothing is guessed or filled in for you.
+              Tailr reads the text and nothing else. It does not look up fixtures or odds, and it does not guess what is missing. Screenshots are not
+              supported yet. The text is not saved.
             </span>
           </div>
+          <div className="btn-row">
+            <button type="button" className="btn btn-primary" onClick={readText} disabled={reading || pasted.trim() === ""}>
+              {reading ? "Reading" : "Read selections"}
+            </button>
+          </div>
+          {readError ? (
+            <p className="banner banner-error" role="alert">
+              {readError}
+            </p>
+          ) : null}
+
+          {review ? (
+            <div className="card card-pad stack" aria-live="polite">
+              <h3 style={{ fontSize: 16 }}>What Tailr read</h3>
+              <p className="muted" style={{ fontSize: 13 }}>
+                This is a draft to check against your slip, not a placed bet. Anything marked needs your attention.
+              </p>
+
+              {review.warnings.length > 0 ? (
+                <ul className="stack" style={{ margin: 0, paddingLeft: 18 }}>
+                  {review.warnings.map((w) => (
+                    <li key={w} className="muted">
+                      {w}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {review.bookmaker || review.bookingCode || review.totalOdds !== null ? (
+                <dl className="kv">
+                  {review.bookmaker ? (
+                    <div>
+                      <dt>Bookmaker named</dt>
+                      <dd>{review.bookmaker}</dd>
+                    </div>
+                  ) : null}
+                  {review.bookingCode ? (
+                    <div>
+                      <dt>Booking code in the text</dt>
+                      <dd className="num">{review.bookingCode}</dd>
+                    </div>
+                  ) : null}
+                  {review.totalOdds !== null ? (
+                    <div>
+                      <dt>Total odds the text states</dt>
+                      <dd className="num">{review.totalOdds.toFixed(2)}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : null}
+
+              {review.selections.length === 0 ? (
+                <p>{foundCount === 0 ? "No selections found in that text. You can add them by hand below." : "Everything that was read has been added to your slip."}</p>
+              ) : (
+                <ul className="list">
+                  {review.selections.map((row, i) => (
+                    <li key={`${i}-${row.sourceLine}`} className="settings-row" style={{ cursor: "default", alignItems: "flex-start" }}>
+                      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                        {row.event ?? "Event not found"}
+                        <small>
+                          {[row.sport, row.market].filter(Boolean).join(" · ")}
+                          {[row.sport, row.market].some(Boolean) ? " · " : ""}
+                          <strong style={{ fontWeight: 650 }}>{row.selection ?? "Pick not found"}</strong>
+                          {" · "}
+                          <span className="num">{row.odds !== null ? row.odds.toFixed(2) : "No odds"}</span>
+                        </small>
+                        <small>
+                          {CONFIDENCE_LABEL[row.confidence]}
+                          {missingNote(row) ? ` · ${missingNote(row)}` : ""}
+                        </small>
+                      </span>
+                      {!isComplete(row) ? (
+                        <button type="button" className="text-btn" onClick={() => fillIn(i)}>
+                          Fill in
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {review.ignoredLines.length > 0 ? (
+                <details>
+                  <summary className="muted">
+                    {review.ignoredLines.length} {review.ignoredLines.length === 1 ? "line" : "lines"} not used
+                  </summary>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {review.ignoredLines.map((line, i) => (
+                      <li key={`${i}-${line}`} className="muted" style={{ overflowWrap: "anywhere" }}>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              <div className="btn-row">
+                {completeRows.length > 0 ? (
+                  <button type="button" className="btn btn-primary" onClick={addReadSelections}>
+                    <PlusIcon /> Add {completeRows.length} to my slip
+                  </button>
+                ) : null}
+                <button type="button" className="btn" onClick={() => setReview(null)}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

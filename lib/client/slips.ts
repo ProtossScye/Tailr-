@@ -29,7 +29,7 @@ export function legToSelection(leg: DraftLeg): SlipSelectionPayload {
   };
 }
 
-function oddsText(value: number | null): string {
+export function oddsText(value: number | null): string {
   if (value === null) return "";
   return Number.isInteger(Math.round(value * 100)) && Math.abs(value * 100 - Math.round(value * 100)) < 1e-9 ? value.toFixed(2) : String(value);
 }
