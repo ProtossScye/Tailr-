@@ -81,3 +81,22 @@ export async function asAnon<T>(db: PGlite, fn: () => Promise<T>): Promise<T> {
     await db.exec("reset role");
   }
 }
+
+/** Inserts a slip draft as the database owner, bypassing row-level security. */
+export async function seedSlip(db: PGlite, userId: string, name = "Weekend accumulator"): Promise<string> {
+  const r = await db.query<{ id: string }>(
+    "insert into public.slip_drafts (user_id, name) values ($1, $2) returning id",
+    [userId, name],
+  );
+  return r.rows[0]!.id;
+}
+
+/** Inserts a slip selection as the database owner, bypassing row-level security. */
+export async function seedSlipLeg(db: PGlite, slipId: string, selection = "Arsenal -1"): Promise<string> {
+  const r = await db.query<{ id: string }>(
+    `insert into public.slip_selections (slip_draft_id, event, selection)
+     values ($1, 'Arsenal vs Chelsea', $2) returning id`,
+    [slipId, selection],
+  );
+  return r.rows[0]!.id;
+}

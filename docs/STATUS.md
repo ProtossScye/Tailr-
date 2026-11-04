@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-03 (won-bet rule changed; API layer and sign-in added). Update this at the end of every work session.
+Last updated: 2026-11-04 (frontend merged; slip tables added). Update this at the end of every work session.
 
 ## Done
 
@@ -28,6 +28,12 @@ Last updated: 2026-11-03 (won-bet rule changed; API layer and sign-in added). Up
   - Protected placeholder area `app/(app)/` for the frontend shell.
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
+- **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts are still saved on the device only (browser storage) until the slip API exists.
+- **Phase two, step 8: slip tables** (migration `20261104013151_create_slip_tables`, applied to the live project):
+  - `slip_drafts` and `slip_selections`, private per user with the same row-level security pattern as bets (4 policies each, least-privilege grants, `anon` has nothing).
+  - A draft is never a bet: there is no "placed" status, and `bets.slip_draft_id` (new, optional) links a bet to the draft it was recorded from only through a foreign key on (draft, owner), so a bet can never point at another user's draft. Deleting a draft keeps the bet and clears the link.
+  - Combined odds are not stored (derived from the selections, like net profit). Odds are only what the user entered; `verification_status` defaults to `user_entered`.
+  - 73 new tests (constraints, cross-user access including statements with no `WHERE` clause, bet link rules). 17 deliberate weakenings of the rules: 15 caught, and the other 2 (dropping `WITH CHECK` from an update policy) behave identically in Postgres because the `USING` clause is then applied to the new row too. Security advisor: no table or policy findings.
 - Project pack committed under `docs/`.
 
 ## Decisions made (copy into `10_DECISIONS_AND_RISKS.md` when it exists)
@@ -52,15 +58,21 @@ Last updated: 2026-11-03 (won-bet rule changed; API layer and sign-in added). Up
 | `profiles` | One row per user | `id` = auth user id, optional `display_name`. Created by trigger on sign-up; users can edit only `display_name` |
 | `bets` | Bets the user says they placed | `stake_minor` and `gross_return_minor` are bigint minor units, capped at the JS safe integer; `currency` NGN or USD; `status` pending, won, lost or void; `provenance` is always `user_reported` |
 | `bet_selections` | Legs of a bet | `event` and `selection` required; `sport`, `market_type`, `odds_decimal` optional. Owned through the parent bet |
+| `slip_drafts` | Slip drafts (not bets) | `name`, `source_type` (manual, pasted_text, image), optional `source_bookmaker`, `status` draft or archived. Private per user |
+| `slip_selections` | Legs of a draft | Same fields as bet legs plus `event_start_at` and `verification_status` (user_entered, needs_review, verified). Owned through the parent draft |
 
 | Function | Purpose |
 | --- | --- |
 | `create_bet(p_bet, p_selections)` | Creates a pending bet and its legs atomically; owner from the session |
 | `update_bet(p_id, p_patch, p_selections)` | Updates the keys present (null clears) and optionally replaces legs, atomically; returns false for a bet that is missing or not the caller's |
 
-Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return strictly greater than the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `slip_draft_id` on `bets` is deliberately left out until slip tables exist.
+Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return strictly greater than the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `bets.slip_draft_id` (optional) links a bet to the draft it was recorded from; the foreign key covers (draft, owner), and deleting the draft clears only the link. `create_bet` and `update_bet` do not set it yet (step 9).
 
 ## Next
+
+Phase two, in order: **step 9** slip functions and API (create, list, get, update, delete a draft with its selections atomically, 1 to 50 legs, then switch the Create page from device storage to the API), **step 10** preferences, **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 9 is merged.
+
+Older notes:
 
 Follow [`NEXT_STEPS.md`](NEXT_STEPS.md) (backend and frontend steps) and [`FRONTEND_TASKS.md`](FRONTEND_TASKS.md) (prompts F1 to F6). Before anything else: set up `.env.local` and the Supabase Auth settings ([`SUPABASE_AUTH_CHECKLIST.md`](SUPABASE_AUTH_CHECKLIST.md)), then run the live check in NEXT_STEPS B2.
 
