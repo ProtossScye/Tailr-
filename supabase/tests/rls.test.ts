@@ -278,7 +278,7 @@ describe("least privilege and policy inventory", () => {
     ]);
   });
 
-  it("no policy has been dropped: 2 on profiles, 4 on bets, 4 on bet_selections", async () => {
+  it("no policy has been dropped: 2 on profiles, 4 on bets, 4 on bet_selections, 4 on slip_drafts, 4 on slip_selections", async () => {
     const rows = await owner<{ tablename: string; n: number }>(
       `select tablename, count(*)::int as n from pg_policies where schemaname = 'public' group by tablename order by tablename`,
     );
@@ -286,6 +286,8 @@ describe("least privilege and policy inventory", () => {
       { tablename: "bet_selections", n: 4 },
       { tablename: "bets", n: 4 },
       { tablename: "profiles", n: 2 },
+      { tablename: "slip_drafts", n: 4 },
+      { tablename: "slip_selections", n: 4 },
     ]);
   });
 
