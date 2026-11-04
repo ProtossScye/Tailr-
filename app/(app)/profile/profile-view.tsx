@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { fetchAllBets, messageFor } from "@/lib/client/api";
 import { betsToCsv } from "@/lib/client/export";
-import { useAllBets } from "@/lib/client/hooks";
+import { useAllBets, usePreferences } from "@/lib/client/hooks";
+import { hasAnyPreference } from "@/lib/client/preferences";
 import { UNSPECIFIED, bookmakerOf, groupBets } from "@/lib/client/stats";
 import { DownloadIcon, LogoutIcon } from "@/components/icons";
 import { PageHeader, Segmented, initialsOf } from "@/components/ui";
@@ -53,6 +55,7 @@ export function ProfileView() {
   const [editing, setEditing] = useState(false);
   const [state, action, pending] = useActionState(saveDisplayName, undefined);
   const [bets] = useAllBets();
+  const [prefs] = usePreferences();
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -193,11 +196,50 @@ export function ProfileView() {
         <h2 className="section-title" id="prefs-title">
           Betting preferences
         </h2>
-        <div className="card card-pad">
-          <p className="muted">
-            Favourite sports and leagues, preferred and avoided markets, odds range and typical stake are not saved to your account yet. In Create you can
-            pick preferred markets and a target odds range for the slip you are working on.
-          </p>
+        <div className="card card-pad stack">
+          {prefs.state === "loading" ? (
+            <p className="muted" role="status">
+              Loading
+            </p>
+          ) : prefs.state === "error" ? (
+            <p className="banner banner-error" role="alert">
+              {prefs.message}
+            </p>
+          ) : hasAnyPreference(prefs.data) ? (
+            <dl className="kv">
+              {prefs.data.favoriteSports.length > 0 ? (
+                <div>
+                  <dt>Favourite sports</dt>
+                  <dd>{prefs.data.favoriteSports.join(", ")}</dd>
+                </div>
+              ) : null}
+              {prefs.data.preferredMarkets.length > 0 ? (
+                <div>
+                  <dt>Preferred markets</dt>
+                  <dd>{prefs.data.preferredMarkets.join(", ")}</dd>
+                </div>
+              ) : null}
+              {prefs.data.targetOddsMin !== null || prefs.data.targetOddsMax !== null ? (
+                <div>
+                  <dt>Target odds</dt>
+                  <dd className="num">
+                    {prefs.data.targetOddsMin !== null && prefs.data.targetOddsMax !== null
+                      ? `${prefs.data.targetOddsMin.toFixed(2)} to ${prefs.data.targetOddsMax.toFixed(2)}`
+                      : prefs.data.targetOddsMin !== null
+                        ? `From ${prefs.data.targetOddsMin.toFixed(2)}`
+                        : `Up to ${(prefs.data.targetOddsMax as number).toFixed(2)}`}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : (
+            <p className="muted">None set. They are optional: choose favourite sports, markets and a target odds range if you want Tailr to point things out on your slips.</p>
+          )}
+          <span>
+            <Link href="/profile/preferences" className="btn btn-small">
+              {prefs.state === "ready" && hasAnyPreference(prefs.data) ? "Edit preferences" : "Set preferences"}
+            </Link>
+          </span>
         </div>
       </section>
 

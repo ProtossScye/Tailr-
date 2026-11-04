@@ -1,6 +1,6 @@
 import { CURRENCIES, netProfitMinor, type Bet, type BetStatus, type Currency } from "../accounting";
-import type { BetRow, BetWithSelections, SelectionRow, SlipWithSelections, StatsBetRow } from "./repository";
-import type { BetView, SelectionView, SlipSelectionView, SlipView } from "./types";
+import type { BetRow, BetWithSelections, PreferencesRow, SelectionRow, SlipWithSelections, StatsBetRow } from "./repository";
+import type { BetView, DetailLevel, PreferencesView, SelectionView, SlipSelectionView, SlipStyle, SlipView } from "./types";
 
 /**
  * Turns database rows into the shapes the app and the accounting engine use. Drivers
@@ -121,5 +121,32 @@ export function toSlipView({ slip, selections }: SlipWithSelections): SlipView {
     selections: views,
     createdAt: toInstant(slip.created_at, "created_at"),
     updatedAt: toInstant(slip.updated_at, "updated_at"),
+  };
+}
+
+export const DEFAULT_PREFERENCES: PreferencesView = {
+  saved: false,
+  favoriteSports: [],
+  preferredMarkets: [],
+  avoidedMarkets: [],
+  slipStyle: null,
+  targetOddsMin: null,
+  targetOddsMax: null,
+  detailLevel: "standard",
+  confirmedAt: null,
+};
+
+export function toPreferencesView(row: PreferencesRow | null): PreferencesView {
+  if (row === null) return DEFAULT_PREFERENCES;
+  return {
+    saved: true,
+    favoriteSports: [...row.favorite_sports],
+    preferredMarkets: [...row.preferred_markets],
+    avoidedMarkets: [...row.avoided_markets],
+    slipStyle: row.slip_style === null ? null : oneOf<SlipStyle>(row.slip_style, ["cautious", "balanced", "ambitious"], "slip_style"),
+    targetOddsMin: toOdds(row.target_odds_min, "target_odds_min"),
+    targetOddsMax: toOdds(row.target_odds_max, "target_odds_max"),
+    detailLevel: oneOf<DetailLevel>(row.detail_level, ["brief", "standard", "detailed"], "detail_level"),
+    confirmedAt: row.explicitly_confirmed_at === null ? null : toInstant(row.explicitly_confirmed_at, "explicitly_confirmed_at"),
   };
 }

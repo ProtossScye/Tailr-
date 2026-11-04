@@ -174,3 +174,40 @@ export interface SlipRepository {
   /** false when not found. Selections are deleted with the draft; bets made from it are kept. */
   deleteSlip(id: string): Promise<boolean>;
 }
+
+// Preferences ------------------------------------------------------------------------
+
+export interface PreferencesRow {
+  user_id: string;
+  favorite_sports: string[];
+  preferred_markets: string[];
+  avoided_markets: string[];
+  slip_style: string | null;
+  target_odds_min: number | string | null;
+  target_odds_max: number | string | null;
+  detail_level: string;
+  explicitly_confirmed_at: string | Date | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+/** Every field is replaced on save; a null or empty value means "not set". */
+export interface PreferencesRecord {
+  favorite_sports: string[];
+  preferred_markets: string[];
+  avoided_markets: string[];
+  slip_style: "cautious" | "balanced" | "ambitious" | null;
+  target_odds_min: number | null;
+  target_odds_max: number | null;
+  detail_level: "brief" | "standard" | "detailed";
+}
+
+/** Acts for ONE signed-in user, like the other repositories. */
+export interface PreferencesRepository {
+  /** null when the user has never saved preferences. */
+  getPreferences(): Promise<PreferencesRow | null>;
+  /** Creates or replaces the user's row. */
+  savePreferences(record: PreferencesRecord): Promise<void>;
+  /** false when there was nothing to remove. */
+  clearPreferences(): Promise<boolean>;
+}

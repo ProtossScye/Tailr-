@@ -3,18 +3,22 @@ import {
   NotFoundError,
   RepositoryError,
   ValidationError,
+  clearPreferences,
   createBet,
   createSlip,
   deleteBet,
   deleteSlip,
   getBet,
   getDashboardStats,
+  getPreferences,
   getSlip,
   listBets,
   listSlips,
+  savePreferences,
   settleBet,
   updateBet,
   updateSlip,
+  type PreferencesServiceDeps,
   type ServiceDeps,
   type SlipServiceDeps,
   type ListBetsQuery,
@@ -33,6 +37,7 @@ import type { ApiErrorBody } from "./types";
  */
 export type Deps = ServiceDeps | null;
 export type SlipDeps = SlipServiceDeps | null;
+export type PreferencesDeps = PreferencesServiceDeps | null;
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -192,4 +197,19 @@ export function handleDeleteSlip(deps: SlipDeps, id: string): Promise<Response> 
     await deleteSlip(d, id);
     return json({ data: { deleted: true } });
   });
+}
+
+// Preferences. Optional: GET returns the defaults (saved: false) until the person saves some.
+
+export function handleGetPreferences(deps: PreferencesDeps): Promise<Response> {
+  return run(deps, async (d) => json({ data: await getPreferences(d) }));
+}
+
+/** Replaces the whole set. A field left out is cleared. */
+export function handleSavePreferences(deps: PreferencesDeps, request: Request): Promise<Response> {
+  return withBody(deps, request, async (d, body) => json({ data: await savePreferences(d, body as Body<Parameters<typeof savePreferences>[1]>) }));
+}
+
+export function handleClearPreferences(deps: PreferencesDeps): Promise<Response> {
+  return run(deps, async (d) => json({ data: await clearPreferences(d) }));
 }

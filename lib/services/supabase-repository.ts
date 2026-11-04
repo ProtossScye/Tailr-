@@ -11,6 +11,9 @@ import type {
   NewBetRecord,
   NewSelectionRecord,
   NewSlipRecord,
+  PreferencesRecord,
+  PreferencesRepository,
+  PreferencesRow,
   SelectionRow,
   SlipPatchRecord,
   SlipRepository,
@@ -139,6 +142,29 @@ export function createSupabaseSlipRepository(client: SupabaseClient): SlipReposi
     async deleteSlip(id: string) {
       const { data, error } = await client.from("slip_drafts").delete().eq("id", id).select("id");
       if (error) throw new RepositoryError("deleteSlip", error);
+      return (data ?? []).length > 0;
+    },
+  };
+}
+
+/** Same rule as the others: a client signed in AS THE USER. The owner comes from the session in save_preferences. */
+export function createSupabasePreferencesRepository(client: SupabaseClient): PreferencesRepository {
+  return {
+    async getPreferences() {
+      const { data, error } = await client.from("user_preferences").select("*").maybeSingle();
+      if (error) throw new RepositoryError("getPreferences", error);
+      return (data as PreferencesRow | null) ?? null;
+    },
+
+    async savePreferences(record: PreferencesRecord) {
+      const { error } = await client.rpc("save_preferences", { p_prefs: record });
+      if (error) throw new RepositoryError("savePreferences", error);
+    },
+
+    async clearPreferences() {
+      // RLS limits this to the caller's own row; the filter is only there because a delete needs one.
+      const { data, error } = await client.from("user_preferences").delete().not("user_id", "is", null).select("user_id");
+      if (error) throw new RepositoryError("clearPreferences", error);
       return (data ?? []).length > 0;
     },
   };

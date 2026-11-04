@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BetJson, DashboardJson } from "@/lib/api/types";
+import type { BetJson, DashboardJson, PreferencesJson } from "@/lib/api/types";
 import { fetchAllBets, fetchDashboard, messageFor } from "./api";
 import type { SlipDraft } from "./drafts";
+import { fetchPreferences } from "./preferences";
 import { fetchSlips } from "./slips";
 
 export type Loadable<T> =
@@ -48,4 +49,8 @@ export function useDashboard(range: { from: string; to: string } | null): [Loada
 
 export function useSlips(): [Loadable<SlipDraft[]>, () => void] {
   return useLoadable(fetchSlips, []);
+}
+
+export function usePreferences(): [Loadable<PreferencesJson>, () => void] {
+  return useLoadable(fetchPreferences, []);
 }

@@ -1,13 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseOdds } from "@/lib/client/money";
 import { messageFor } from "@/lib/client/api";
+import { usePreferences } from "@/lib/client/hooks";
 import { draftToText, loadDrafts, type DraftLeg, type SlipDraft } from "@/lib/client/drafts";
 import { deleteSlip, fetchSlip, fetchSlips, moveLocalDraftsToAccount, saveSlip } from "@/lib/client/slips";
 import { MAX_LEGS } from "@/lib/client/bet-form";
-import { COMMON_MARKETS, COMMON_SPORTS, checkTarget, defaultDraftName, legOdds, outsidePreferred, slipCombinedOdds } from "@/lib/client/slip";
+import { COMMON_MARKETS, checkTarget, defaultDraftName, inAvoided, legOdds, outsidePreferred, slipCombinedOdds, sportChoices } from "@/lib/client/slip";
 import { CopyIcon, EditIcon, PlusIcon, SlipArt, TrashIcon } from "@/components/icons";
 import { PageHeader, Segmented } from "@/components/ui";
 
@@ -33,6 +35,21 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [targetMin, setTargetMin] = useState("");
   const [targetMax, setTargetMax] = useState("");
   const [preferred, setPreferred] = useState<string[]>([]);
+  // Saved preferences are only a starting point here. Changes made on this page apply to this slip only.
+  const [prefs] = usePreferences();
+  const appliedPrefs = useRef(false);
+  const avoided = prefs.state === "ready" ? prefs.data.avoidedMarkets : [];
+  const favoriteSports = prefs.state === "ready" ? prefs.data.favoriteSports : [];
+  const usingSaved = prefs.state === "ready" && prefs.data.saved;
+
+  useEffect(() => {
+    if (prefs.state !== "ready" || appliedPrefs.current) return;
+    appliedPrefs.current = true;
+    const p = prefs.data;
+    if (p.targetOddsMin !== null) setTargetMin(String(p.targetOddsMin));
+    if (p.targetOddsMax !== null) setTargetMax(String(p.targetOddsMax));
+    if (p.preferredMarkets.length > 0) setPreferred(p.preferredMarkets);
+  }, [prefs]);
 
   const refreshDrafts = async () => {
     try {
@@ -66,6 +83,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const max = parseOdds(targetMax);
   const target = checkTarget(combined, min.ok ? min.value : null, max.ok ? max.value : null);
   const outside = useMemo(() => outsidePreferred(legs, preferred), [legs, preferred]);
+  const unwanted = useMemo(() => inAvoided(legs, avoided), [legs, avoided]);
   const missingOdds = legs.filter((l) => legOdds(l) === null).length;
 
   const setField = (key: keyof DraftLeg, value: string) => {
@@ -204,7 +222,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
   };
 
   const togglePreferred = (market: string) =>
-    setPreferred((prev) => (prev.includes(market) ? prev.filter((m) => m !== market) : [...prev, market]));
+    setPreferred((prev) => (prev.some((m) => m.toLowerCase() === market.toLowerCase()) ? prev.filter((m) => m.toLowerCase() !== market.toLowerCase()) : [...prev, market]));
 
   return (
     <div className="page">
@@ -271,7 +289,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
               <label htmlFor="composer-sport">Sport</label>
               <input id="composer-sport" className="input" list="sports" autoComplete="off" value={composer.sport} onChange={(e) => setField("sport", e.target.value)} placeholder="Football" />
               <datalist id="sports">
-                {COMMON_SPORTS.map((s) => (
+                {sportChoices(favoriteSports).map((s) => (
                   <option key={s} value={s} />
                 ))}
               </datalist>
@@ -398,7 +416,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
                       {[leg.sport, leg.market].filter(Boolean).join(" · ") || "No sport or market"}
                     </div>
                     <div style={{ fontWeight: 650, marginTop: 2 }}>{leg.selection}</div>
-                    {outside.includes(i) ? <span className="pill pill-pending" style={{ marginTop: 6 }}>Outside your preferred markets</span> : null}
+                    {unwanted.includes(i) ? <span className="pill pill-pending" style={{ marginTop: 6 }}>In a market you avoid</span> : null}
+                    {outside.includes(i) && !unwanted.includes(i) ? <span className="pill pill-pending" style={{ marginTop: 6 }}>Outside your preferred markets</span> : null}
                     <div className="btn-row" style={{ marginTop: 4 }}>
                       <button type="button" className="text-btn" onClick={() => editSelection(i)} aria-label={`Edit selection ${i + 1}`}>
                         <EditIcon style={{ width: 15, height: 15, verticalAlign: -2 }} /> Edit
@@ -435,6 +454,14 @@ export function CreateView({ draftId }: { draftId?: string }) {
             {mode === "adapt" ? (
               <div className="card card-pad stack">
                 <h3 style={{ fontSize: 16 }}>Shape it to your preferences</h3>
+                <p className="muted" style={{ fontSize: 13 }}>
+                  {usingSaved
+                    ? "Starting from your saved preferences. Changes here apply to this slip only."
+                    : "Optional. Save these once and they will be filled in for you."}{" "}
+                  <Link href="/profile/preferences" className="link-more">
+                    {usingSaved ? "Edit saved preferences" : "Set preferences"}
+                  </Link>
+                </p>
                 <div className="field-row">
                   <div className="field">
                     <label htmlFor="target-min">Target odds from</label>
@@ -455,15 +482,18 @@ export function CreateView({ draftId }: { draftId?: string }) {
                 <div className="field">
                   <span className="label">Preferred markets</span>
                   <ul className="tag-list">
-                    {COMMON_MARKETS.map((m) => (
+                    {[...COMMON_MARKETS, ...preferred.filter((p) => !COMMON_MARKETS.some((m) => m.toLowerCase() === p.toLowerCase()))].map((m) => (
                       <li key={m}>
-                        <button type="button" className="tab" aria-pressed={preferred.includes(m)} onClick={() => togglePreferred(m)}>
+                        <button type="button" className="tab" aria-pressed={preferred.some((p) => p.toLowerCase() === m.toLowerCase())} onClick={() => togglePreferred(m)}>
                           {m}
                         </button>
                       </li>
                     ))}
                   </ul>
-                  <span className="hint">Selections in other markets are marked on the slip. This only points them out; nothing is removed.</span>
+                  <span className="hint">
+                    Selections in other markets are marked on the slip. This only points them out; nothing is removed.
+                    {avoided.length > 0 ? ` Selections in markets you avoid (${avoided.join(", ")}) are marked too.` : ""}
+                  </span>
                 </div>
                 <p className="banner">
                   Suggested changes arrive with the slip assistant. Until then, edit or remove selections yourself and the odds update as you go.
