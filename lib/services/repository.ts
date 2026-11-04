@@ -25,6 +25,8 @@ export interface BetRow {
   gross_return_minor: number | string | bigint | null;
   provenance: string;
   notes: string | null;
+  /** The draft this bet was recorded from, when the user chose to link it. */
+  slip_draft_id: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 }
@@ -70,6 +72,8 @@ export interface NewBetRecord {
   /** ISO 8601 with timezone. */
   placed_at: string;
   notes: string | null;
+  /** Must be a draft the same user owns; the database refuses anything else. */
+  slip_draft_id?: string | null;
 }
 
 /** Only keys that are present are changed. null clears the field. */
@@ -105,4 +109,68 @@ export interface BetRepository {
   updateBet(id: string, patch: BetPatchRecord, selections?: NewSelectionRecord[]): Promise<boolean>;
   /** false when not found. Legs are deleted with the bet. */
   deleteBet(id: string): Promise<boolean>;
+}
+
+// Slip drafts ------------------------------------------------------------------------
+
+export interface SlipRow {
+  id: string;
+  user_id: string;
+  name: string;
+  source_type: string;
+  source_bookmaker: string | null;
+  status: string;
+  created_at: string | Date;
+  updated_at: string | Date;
+}
+
+export interface SlipSelectionRow {
+  id: string;
+  slip_draft_id: string;
+  sport: string | null;
+  event: string;
+  event_start_at: string | Date | null;
+  market_type: string | null;
+  selection: string;
+  odds_decimal: number | string | null;
+  verification_status: string;
+  sort_order: number;
+  created_at: string | Date;
+}
+
+export interface SlipWithSelections {
+  slip: SlipRow;
+  selections: SlipSelectionRow[];
+}
+
+export interface NewSlipRecord {
+  name: string;
+  source_bookmaker: string | null;
+}
+
+/** Only keys that are present are changed. null clears source_bookmaker; the name cannot be cleared. */
+export interface SlipPatchRecord {
+  name?: string;
+  source_bookmaker?: string | null;
+  status?: "draft" | "archived";
+}
+
+export interface ListSlipsQuery {
+  status?: "draft" | "archived";
+  limit: number;
+  offset: number;
+}
+
+/** Like BetRepository: acts for ONE signed-in user, no method takes a user id. */
+export interface SlipRepository {
+  /** Creates a manual draft and its selections together or not at all. Returns the new id. */
+  createSlip(slip: NewSlipRecord, selections: NewSelectionRecord[]): Promise<string>;
+  /** null when it does not exist or belongs to someone else. */
+  getSlip(id: string): Promise<SlipWithSelections | null>;
+  /** Most recently changed first. */
+  listSlips(query: ListSlipsQuery): Promise<SlipWithSelections[]>;
+  /** Updates fields and, when given, replaces the selections, atomically. false when not found. */
+  updateSlip(id: string, patch: SlipPatchRecord, selections?: NewSelectionRecord[]): Promise<boolean>;
+  /** false when not found. Selections are deleted with the draft; bets made from it are kept. */
+  deleteSlip(id: string): Promise<boolean>;
 }

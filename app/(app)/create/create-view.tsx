@@ -3,15 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { parseOdds } from "@/lib/client/money";
-import {
-  deleteDraft,
-  draftToText,
-  loadDrafts,
-  newDraftId,
-  saveDraft,
-  type DraftLeg,
-  type SlipDraft,
-} from "@/lib/client/drafts";
+import { messageFor } from "@/lib/client/api";
+import { draftToText, loadDrafts, type DraftLeg, type SlipDraft } from "@/lib/client/drafts";
+import { deleteSlip, fetchSlip, fetchSlips, moveLocalDraftsToAccount, saveSlip } from "@/lib/client/slips";
+import { MAX_LEGS } from "@/lib/client/bet-form";
 import { COMMON_MARKETS, COMMON_SPORTS, checkTarget, defaultDraftName, legOdds, outsidePreferred, slipCombinedOdds } from "@/lib/client/slip";
 import { CopyIcon, EditIcon, PlusIcon, SlipArt, TrashIcon } from "@/components/icons";
 import { PageHeader, Segmented } from "@/components/ui";
@@ -28,6 +23,9 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [composerErrors, setComposerErrors] = useState<Record<string, string>>({});
   const [current, setCurrent] = useState<{ id: string; name: string } | null>(null);
   const [drafts, setDrafts] = useState<SlipDraft[]>([]);
+  const [draftsState, setDraftsState] = useState<"loading" | "error" | "ready">("loading");
+  const [localCount, setLocalCount] = useState(0);
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [name, setName] = useState("");
   // Adapt mode
@@ -36,17 +34,31 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [targetMax, setTargetMax] = useState("");
   const [preferred, setPreferred] = useState<string[]>([]);
 
-  useEffect(() => {
-    const saved = loadDrafts();
-    setDrafts(saved);
-    if (draftId) {
-      const found = saved.find((d) => d.id === draftId);
-      if (found) {
-        setLegs(found.legs);
-        setCurrent({ id: found.id, name: found.name });
-        setName(found.name);
-      }
+  const refreshDrafts = async () => {
+    try {
+      setDrafts(await fetchSlips());
+      setDraftsState("ready");
+    } catch (error) {
+      setDraftsState("error");
+      setNotice(messageFor(error));
     }
+  };
+
+  useEffect(() => {
+    setLocalCount(loadDrafts().length);
+    void refreshDrafts();
+    if (draftId) {
+      fetchSlip(draftId).then(
+        (found) => {
+          setLegs(found.legs);
+          setCurrent({ id: found.id, name: found.name });
+          setName(found.name);
+        },
+        () => setNotice("That draft could not be opened. It may have been deleted."),
+      );
+    }
+    // refreshDrafts only uses stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftId]);
 
   const combined = useMemo(() => slipCombinedOdds(legs), [legs]);
@@ -80,6 +92,10 @@ export function CreateView({ draftId }: { draftId?: string }) {
       selection: composer.selection.trim(),
       odds: composer.odds.trim(),
     };
+    if (editing === null && legs.length >= MAX_LEGS) {
+      setNotice(`A slip can have at most ${MAX_LEGS} selections.`);
+      return;
+    }
     setLegs((prev) => (editing === null ? [...prev, clean] : prev.map((l, i) => (i === editing ? clean : l))));
     setEditing(null);
     // Keep sport and market: the next pick is often from the same place.
@@ -107,27 +123,27 @@ export function CreateView({ draftId }: { draftId?: string }) {
     }
   };
 
-  const persist = (): SlipDraft | null => {
+  /** Saves to the account. Returns the saved draft, or null (with a message) when it could not be saved. */
+  const persist = async (): Promise<SlipDraft | null> => {
     if (legs.length === 0) return null;
-    const draft: SlipDraft = {
-      id: current?.id ?? newDraftId(),
-      name: name.trim() || defaultDraftName(legs, drafts.length),
-      updatedAt: new Date().toISOString(),
-      legs,
-    };
-    if (!saveDraft(draft)) {
-      setNotice("This browser would not let Tailr save the draft. Copy the slip text instead.");
+    setBusy(true);
+    try {
+      const saved = await saveSlip(current?.id ?? null, name.trim() || defaultDraftName(legs, drafts.length), legs);
+      setCurrent({ id: saved.id, name: saved.name });
+      setName(saved.name);
+      await refreshDrafts();
+      return saved;
+    } catch (error) {
+      setNotice(`${messageFor(error)} Your slip is still here. You can copy the slip text meanwhile.`);
       return null;
+    } finally {
+      setBusy(false);
     }
-    setCurrent({ id: draft.id, name: draft.name });
-    setName(draft.name);
-    setDrafts(loadDrafts());
-    return draft;
   };
 
-  const onSave = () => {
-    const saved = persist();
-    if (saved) setNotice("Draft saved on this device. It is not a placed bet.");
+  const onSave = async () => {
+    const saved = await persist();
+    if (saved) setNotice("Draft saved to your account. It is not a placed bet.");
   };
 
   const onCopy = async () => {
@@ -140,8 +156,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
     }
   };
 
-  const onPlaced = () => {
-    const saved = persist();
+  const onPlaced = async () => {
+    const saved = await persist();
     if (saved) router.push(`/bets/new?draft=${saved.id}`);
   };
 
@@ -163,10 +179,28 @@ export function CreateView({ draftId }: { draftId?: string }) {
     setNotice(null);
   };
 
-  const removeDraft = (id: string) => {
-    deleteDraft(id);
-    setDrafts(loadDrafts());
-    if (current?.id === id) setCurrent(null);
+  const removeDraft = async (id: string) => {
+    try {
+      await deleteSlip(id);
+      if (current?.id === id) setCurrent(null);
+      await refreshDrafts();
+    } catch (error) {
+      setNotice(messageFor(error));
+    }
+  };
+
+  const moveLocal = async () => {
+    setBusy(true);
+    try {
+      const moved = await moveLocalDraftsToAccount();
+      setNotice(`Moved ${moved} ${moved === 1 ? "draft" : "drafts"} to your account.`);
+    } catch (error) {
+      setNotice(`${messageFor(error)} Drafts not moved yet are still on this device.`);
+    } finally {
+      setLocalCount(loadDrafts().length);
+      await refreshDrafts();
+      setBusy(false);
+    }
   };
 
   const togglePreferred = (market: string) =>
@@ -186,6 +220,19 @@ export function CreateView({ draftId }: { draftId?: string }) {
           { value: "adapt", label: "Adapt a slip" },
         ]}
       />
+
+      {localCount > 0 ? (
+        <div className="banner banner-note stack" role="status">
+          <span>
+            {localCount === 1 ? "1 draft is" : `${localCount} drafts are`} saved on this device only. Move {localCount === 1 ? "it" : "them"} to your account to keep {localCount === 1 ? "it" : "them"} safe and see {localCount === 1 ? "it" : "them"} on every device.
+          </span>
+          <span>
+            <button type="button" className="btn btn-small" onClick={moveLocal} disabled={busy}>
+              Move to my account
+            </button>
+          </span>
+        </div>
+      ) : null}
 
       <p className="banner">
         Tailr has no fixture or odds feed. You enter the events, markets and odds yourself, and Tailr only does the arithmetic on what you enter.
@@ -435,7 +482,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
                 </p>
               ) : null}
               <div className="btn-row">
-                <button type="button" className="btn btn-primary" onClick={onSave}>
+                <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy}>
                   Save as draft
                 </button>
                 <button type="button" className="btn" onClick={onCopy}>
@@ -449,23 +496,29 @@ export function CreateView({ draftId }: { draftId?: string }) {
               <div className="stack">
                 <p className="muted">Placed this slip with your bookmaker? Record it as a bet. You will confirm it first, and it starts as pending.</p>
                 <span>
-                  <button type="button" className="btn" onClick={onPlaced}>
+                  <button type="button" className="btn" onClick={onPlaced} disabled={busy}>
                     I placed this, record the bet
                   </button>
                 </span>
               </div>
               <p className="muted" style={{ fontSize: 13 }}>
-                Drafts are kept on this device only. Saving slips to your account is not available yet.
+                Drafts are saved to your account, and only you can see them.
               </p>
             </div>
           </>
         )}
       </section>
 
+      {draftsState === "loading" ? (
+        <p className="muted" role="status">
+          Loading your drafts
+        </p>
+      ) : null}
+
       {drafts.length > 0 ? (
         <section className="section" aria-labelledby="drafts-title">
           <h2 className="section-title" id="drafts-title">
-            Saved on this device
+            Your drafts
           </h2>
           <ul className="card list">
             {drafts.map((draft) => (
@@ -480,7 +533,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
                   <button type="button" className="text-btn" onClick={() => openDraft(draft)}>
                     Open
                   </button>
-                  <button type="button" className="text-btn danger" onClick={() => removeDraft(draft.id)} aria-label={`Delete draft ${draft.name}`}>
+                  <button type="button" className="text-btn danger" onClick={() => void removeDraft(draft.id)} aria-label={`Delete draft ${draft.name}`}>
                     Delete
                   </button>
                 </span>

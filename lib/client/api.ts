@@ -67,7 +67,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (response.status === 400 && error) {
     throw new ApiError(400, error.code, error.message, error.issues ?? []);
   }
-  if (response.status === 404) throw new ApiError(404, "not_found", "We could not find that bet. It may have been deleted.");
+  if (response.status === 404) throw new ApiError(404, "not_found", "We could not find that. It may have been deleted.");
   throw new ApiError(response.status, "server_error", FRIENDLY.server);
 }
 

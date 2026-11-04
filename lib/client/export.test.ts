@@ -15,6 +15,7 @@ const bet = (overrides: Partial<BetJson> = {}): BetJson => ({
   netProfitMinor: 399950,
   provenance: "user_reported",
   notes: null,
+  slipDraftId: null,
   selections: [{ id: "s", sport: "Football", event: "Arsenal v Chelsea", marketType: "Result", selection: "Arsenal", oddsDecimal: 1.85, sortOrder: 0 }],
   createdAt: "2026-11-01T10:00:00Z",
   updatedAt: "2026-11-01T10:00:00Z",

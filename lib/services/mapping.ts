@@ -1,6 +1,6 @@
 import { CURRENCIES, netProfitMinor, type Bet, type BetStatus, type Currency } from "../accounting";
-import type { BetRow, BetWithSelections, SelectionRow, StatsBetRow } from "./repository";
-import type { BetView, SelectionView } from "./types";
+import type { BetRow, BetWithSelections, SelectionRow, SlipWithSelections, StatsBetRow } from "./repository";
+import type { BetView, SelectionView, SlipSelectionView, SlipView } from "./types";
 
 /**
  * Turns database rows into the shapes the app and the accounting engine use. Drivers
@@ -26,7 +26,7 @@ export function toInstant(value: unknown, field: string): Date {
   return d;
 }
 
-function toOdds(value: unknown, field: string): number | null {
+export function toOdds(value: unknown, field: string): number | null {
   if (value === null || value === undefined) return null;
   const n = typeof value === "string" ? Number(value) : value;
   if (typeof n !== "number" || !Number.isFinite(n)) {
@@ -87,8 +87,39 @@ export function toBetView({ bet, selections }: { bet: BetRow; selections: Select
     netProfitMinor: netProfitMinor(engine),
     provenance: "user_reported",
     notes: bet.notes,
+    slipDraftId: bet.slip_draft_id ?? null,
     selections: [...selections].map(toSelectionView).sort((a, b) => a.sortOrder - b.sortOrder),
     createdAt: toInstant(bet.created_at, "created_at"),
     updatedAt: toInstant(bet.updated_at, "updated_at"),
+  };
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], field: string): T {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) return value as T;
+  throw new Error(`Unexpected ${field}: ${String(value)}`);
+}
+
+export function toSlipView({ slip, selections }: SlipWithSelections): SlipView {
+  const views: SlipSelectionView[] = selections
+    .map((row) => ({
+      id: row.id,
+      sport: row.sport,
+      event: row.event,
+      marketType: row.market_type,
+      selection: row.selection,
+      oddsDecimal: toOdds(row.odds_decimal, "odds_decimal"),
+      verificationStatus: oneOf(row.verification_status, ["user_entered", "needs_review", "verified"] as const, "verification_status"),
+      sortOrder: row.sort_order,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  return {
+    id: slip.id,
+    name: slip.name,
+    sourceType: oneOf(slip.source_type, ["manual", "pasted_text", "image"] as const, "source_type"),
+    sourceBookmaker: slip.source_bookmaker,
+    status: oneOf(slip.status, ["draft", "archived"] as const, "status"),
+    selections: views,
+    createdAt: toInstant(slip.created_at, "created_at"),
+    updatedAt: toInstant(slip.updated_at, "updated_at"),
   };
 }

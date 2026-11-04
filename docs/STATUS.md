@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-04 (frontend merged; slip tables added). Update this at the end of every work session.
+Last updated: 2026-11-04 (frontend merged; slip tables and slip API added). Update this at the end of every work session.
 
 ## Done
 
@@ -28,7 +28,12 @@ Last updated: 2026-11-04 (frontend merged; slip tables added). Update this at th
   - Protected placeholder area `app/(app)/` for the frontend shell.
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
-- **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts are still saved on the device only (browser storage) until the slip API exists.
+- **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts now save to the user's account (step 9).
+- **Phase two, step 9: slip API** (migration `20261104073128_add_slip_write_functions`, applied to the live project):
+  - `create_slip` and `update_slip` (SECURITY INVOKER, owner from the session, 1 to 50 selections, atomic; update replaces selections as a whole and returns false for a missing or someone else's draft). `anon` cannot execute them. `create_bet` now also records `slip_draft_id`.
+  - `/api/slips` (GET list with `status`, `limit`, `offset`; POST) and `/api/slips/[id]` (GET, PATCH, DELETE). Same envelope and error codes as bets; a missing or someone else's draft is a 404 "Slip not found". A draft is always created as a manual draft with `user_entered` selections; owner, source and verification cannot be set by the caller. An unnamed draft is named after its first event (+N).
+  - `POST /api/bets` accepts optional `slipDraftId`. A missing or someone else's draft is a 400 on `slipDraftId` and no bet is saved. The draft stays a draft; the Add bet form only sends the link after the person confirms they placed it.
+  - Create page, Home Drafts tab and Add bet form use the API. Drafts saved on a device before this can be moved to the account with one button; each is removed from the device only after the server has saved it.
 - **Phase two, step 8: slip tables** (migration `20261104013151_create_slip_tables`, applied to the live project):
   - `slip_drafts` and `slip_selections`, private per user with the same row-level security pattern as bets (4 policies each, least-privilege grants, `anon` has nothing).
   - A draft is never a bet: there is no "placed" status, and `bets.slip_draft_id` (new, optional) links a bet to the draft it was recorded from only through a foreign key on (draft, owner), so a bet can never point at another user's draft. Deleting a draft keeps the bet and clears the link.
@@ -66,11 +71,11 @@ Last updated: 2026-11-04 (frontend merged; slip tables added). Update this at th
 | `create_bet(p_bet, p_selections)` | Creates a pending bet and its legs atomically; owner from the session |
 | `update_bet(p_id, p_patch, p_selections)` | Updates the keys present (null clears) and optionally replaces legs, atomically; returns false for a bet that is missing or not the caller's |
 
-Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return strictly greater than the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `bets.slip_draft_id` (optional) links a bet to the draft it was recorded from; the foreign key covers (draft, owner), and deleting the draft clears only the link. `create_bet` and `update_bet` do not set it yet (step 9).
+Database rules that mirror the engine: pending has no settlement date or return; won needs a settlement date and a return strictly greater than the stake; lost and void need a settlement date and no return; settled time cannot be before placed time. Deleting a user deletes their profile, bets and legs. `bets.slip_draft_id` (optional) links a bet to the draft it was recorded from; the foreign key covers (draft, owner), and deleting the draft clears only the link. `create_bet` sets it when the caller gives a draft the same user owns; `update_bet` does not change it.
 
 ## Next
 
-Phase two, in order: **step 9** slip functions and API (create, list, get, update, delete a draft with its selections atomically, 1 to 50 legs, then switch the Create page from device storage to the API), **step 10** preferences, **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 9 is merged.
+Phase two, in order: steps 8 and 9 are done. Next: **step 10** preferences, **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 10 is merged.
 
 Older notes:
 

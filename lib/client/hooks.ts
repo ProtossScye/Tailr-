@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BetJson, DashboardJson } from "@/lib/api/types";
 import { fetchAllBets, fetchDashboard, messageFor } from "./api";
+import type { SlipDraft } from "./drafts";
+import { fetchSlips } from "./slips";
 
 export type Loadable<T> =
   | { state: "loading" }
@@ -42,4 +44,8 @@ export function useAllBets(): [Loadable<BetJson[]>, () => void] {
 
 export function useDashboard(range: { from: string; to: string } | null): [Loadable<DashboardJson>, () => void] {
   return useLoadable(() => fetchDashboard(range), [range?.from ?? "all", range?.to ?? "all"]);
+}
+
+export function useSlips(): [Loadable<SlipDraft[]>, () => void] {
+  return useLoadable(fetchSlips, []);
 }

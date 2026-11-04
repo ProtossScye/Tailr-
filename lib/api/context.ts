@@ -1,4 +1,4 @@
-import { createSupabaseBetRepository, type ServiceDeps } from "../services";
+import { createSupabaseBetRepository, createSupabaseSlipRepository, type ServiceDeps, type SlipServiceDeps } from "../services";
 import { createClient } from "../supabase/server";
 
 /**
@@ -11,4 +11,12 @@ export async function getDeps(): Promise<ServiceDeps | null> {
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return null;
   return { repo: createSupabaseBetRepository(supabase) };
+}
+
+/** Same as getDeps, for slip drafts. Also null when not signed in. */
+export async function getSlipDeps(): Promise<SlipServiceDeps | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return null;
+  return { repo: createSupabaseSlipRepository(supabase) };
 }
