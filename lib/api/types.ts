@@ -3,7 +3,7 @@
  * Over JSON, every Date becomes an ISO string; money stays integer minor units.
  * The service types describe the same fields with Date objects, so use Serialized<T>.
  */
-import type { BetView, BetPage, DashboardStats, SlipPage, SlipView } from "../services/types";
+import type { BetView, BetPage, DashboardStats, PreferencesView, SlipPage, SlipView } from "../services/types";
 
 export type Serialized<T> = T extends Date
   ? string
@@ -26,3 +26,4 @@ export type BetPageJson = Serialized<BetPage>;
 export type DashboardJson = Serialized<DashboardStats>;
 export type SlipJson = Serialized<SlipView>;
 export type SlipPageJson = Serialized<SlipPage>;
+export type PreferencesJson = Serialized<PreferencesView>;

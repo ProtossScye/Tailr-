@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { draftToText, type DraftLeg } from "./drafts";
-import { checkTarget, defaultDraftName, outsidePreferred, slipCombinedOdds } from "./slip";
+import { checkTarget, defaultDraftName, inAvoided, outsidePreferred, slipCombinedOdds, sportChoices, COMMON_SPORTS } from "./slip";
 
 const leg = (overrides: Partial<DraftLeg> = {}): DraftLeg => ({ sport: "", event: "A v B", market: "", selection: "A", odds: "", ...overrides });
 
@@ -65,5 +65,25 @@ describe("draftToText", () => {
 
   it("adds combined odds only when given", () => {
     expect(draftToText([leg({ odds: "2" })], 2)).toContain("Combined odds: 2.00");
+  });
+});
+
+describe("inAvoided", () => {
+  it("flags selections in an avoided market, ignoring case and blanks", () => {
+    const legs = [leg({ market: "Correct score" }), leg({ market: "match result" }), leg({ market: "" }), leg({ market: "CORRECT SCORE " })];
+    expect(inAvoided(legs, ["correct score"])).toEqual([0, 3]);
+  });
+
+  it("flags nothing when nothing is avoided", () => {
+    expect(inAvoided([leg({ market: "Anything" })], [])).toEqual([]);
+  });
+});
+
+describe("sportChoices", () => {
+  it("lists favourites first and does not repeat a common sport", () => {
+    const choices = sportChoices(["Darts", "football"]);
+    expect(choices.slice(0, 2)).toEqual(["Darts", "football"]);
+    expect(choices.filter((s) => s.toLowerCase() === "football")).toHaveLength(1);
+    expect(choices).toHaveLength(COMMON_SPORTS.length + 1);
   });
 });

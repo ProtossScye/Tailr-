@@ -159,3 +159,34 @@ export interface SlipPage {
   offset: number;
   hasMore: boolean;
 }
+
+// Preferences
+
+export type SlipStyle = "cautious" | "balanced" | "ambitious";
+export type DetailLevel = "brief" | "standard" | "detailed";
+
+/** The whole set is replaced on save. A field left out (or null) is cleared. */
+export interface SavePreferencesInput {
+  favoriteSports?: string[];
+  preferredMarkets?: string[];
+  avoidedMarkets?: string[];
+  slipStyle?: SlipStyle | null;
+  /** Decimal odds, at least 1. A preference to compare slips against, never a promise. */
+  targetOddsMin?: number | null;
+  targetOddsMax?: number | null;
+  detailLevel?: DetailLevel;
+}
+
+export interface PreferencesView {
+  /** false until the person saves preferences for the first time. Everything else is then the default. */
+  saved: boolean;
+  favoriteSports: string[];
+  preferredMarkets: string[];
+  avoidedMarkets: string[];
+  slipStyle: SlipStyle | null;
+  targetOddsMin: number | null;
+  targetOddsMax: number | null;
+  detailLevel: DetailLevel;
+  /** When the person last saved them. */
+  confirmedAt: Date | null;
+}

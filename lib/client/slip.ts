@@ -55,6 +55,23 @@ export function outsidePreferred(legs: readonly DraftLeg[], preferred: readonly 
   return out;
 }
 
+/** Indexes of selections in a market the person said they avoid. A pointer only; nothing is removed. */
+export function inAvoided(legs: readonly DraftLeg[], avoided: readonly string[]): number[] {
+  if (avoided.length === 0) return [];
+  const unwanted = avoided.map((m) => m.toLowerCase());
+  const out: number[] = [];
+  legs.forEach((leg, i) => {
+    if (unwanted.includes(leg.market.trim().toLowerCase())) out.push(i);
+  });
+  return out;
+}
+
+/** Saved favourites first, then the usual sports that are not already listed. */
+export function sportChoices(favorites: readonly string[]): string[] {
+  const seen = new Set(favorites.map((s) => s.toLowerCase()));
+  return [...favorites, ...COMMON_SPORTS.filter((s) => !seen.has(s.toLowerCase()))];
+}
+
 export function defaultDraftName(legs: readonly DraftLeg[], count: number): string {
   const first = legs.find((l) => l.event.trim() !== "");
   if (!first) return `Slip ${count + 1}`;

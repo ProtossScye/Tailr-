@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-04 (frontend merged; slip tables and slip API added). Update this at the end of every work session.
+Last updated: 2026-11-04 (frontend merged; slip tables, slip API and preferences added). Update this at the end of every work session.
 
 ## Done
 
@@ -29,6 +29,12 @@ Last updated: 2026-11-04 (frontend merged; slip tables and slip API added). Upda
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
 - **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts now save to the user's account (step 9).
+- **Phase two, step 10: preferences** (migration `20261104074702_create_user_preferences`, applied to the live project):
+  - `user_preferences`, one row per user, private (4 policies, `anon` has nothing): favourite sports, preferred markets, avoided markets, slip style (cautious, balanced, ambitious), optional target odds range, explanation level (brief, standard, detailed), and when the person last saved. Rules in the database: at most 20 items of 1 to 80 characters per list, a market cannot be both preferred and avoided, odds at least 1, min not above max.
+  - `save_preferences` (SECURITY INVOKER, owner from the session) creates or replaces the row; every field is replaced, so a field left out is cleared. `anon` cannot execute it.
+  - `GET /api/preferences` returns the defaults with `saved: false` until something is saved; `PUT` replaces the whole set; `DELETE` removes it ("skip" or start over). Text lists are trimmed and de-duplicated ignoring case.
+  - Everything is optional and overridable. A target odds range is a preference to compare a slip against, never a promise. Preferences do not change any bet or draft.
+  - Screens: Profile shows a summary and links to a Betting preferences page. Create (adapt mode) starts from the saved range and preferred markets, editable for that slip only; favourite sports come first in the sport list; selections in avoided markets are marked, nothing is removed.
 - **Phase two, step 9: slip API** (migration `20261104073128_add_slip_write_functions`, applied to the live project):
   - `create_slip` and `update_slip` (SECURITY INVOKER, owner from the session, 1 to 50 selections, atomic; update replaces selections as a whole and returns false for a missing or someone else's draft). `anon` cannot execute them. `create_bet` now also records `slip_draft_id`.
   - `/api/slips` (GET list with `status`, `limit`, `offset`; POST) and `/api/slips/[id]` (GET, PATCH, DELETE). Same envelope and error codes as bets; a missing or someone else's draft is a 404 "Slip not found". A draft is always created as a manual draft with `user_entered` selections; owner, source and verification cannot be set by the caller. An unnamed draft is named after its first event (+N).
@@ -75,7 +81,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8 and 9 are done. Next: **step 10** preferences, **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 10 is merged.
+Phase two, in order: steps 8, 9 and 10 are done. Next: **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 10 is merged (merge the feat/preferences PR first).
 
 Older notes:
 

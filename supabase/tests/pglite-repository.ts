@@ -10,6 +10,9 @@ import type {
   NewBetRecord,
   NewSelectionRecord,
   NewSlipRecord,
+  PreferencesRecord,
+  PreferencesRepository,
+  PreferencesRow,
   SelectionRow,
   SlipPatchRecord,
   SlipRepository,
@@ -165,5 +168,20 @@ export function createPgliteSlipRepository(db: PGlite, userId: string | null): S
         const r = await db.query("delete from public.slip_drafts where id = $1", [id]);
         return (r.affectedRows ?? 0) > 0;
       }),
+  };
+}
+
+/** Test-only PreferencesRepository over the real SQL, acting as one signed-in user. */
+export function createPglitePreferencesRepository(db: PGlite, userId: string | null): PreferencesRepository {
+  const as = <T>(fn: () => Promise<T>) => asUser(db, userId, fn);
+  return {
+    getPreferences: () =>
+      as(async () => (await db.query<PreferencesRow>("select * from public.user_preferences")).rows[0] ?? null),
+    savePreferences: (record: PreferencesRecord) =>
+      as(async () => {
+        await db.query("select public.save_preferences($1::jsonb)", [JSON.stringify(record)]);
+      }),
+    clearPreferences: () =>
+      as(async () => ((await db.query("delete from public.user_preferences")).affectedRows ?? 0) > 0),
   };
 }

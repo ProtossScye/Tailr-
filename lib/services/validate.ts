@@ -1,6 +1,6 @@
 import { CURRENCIES, type Currency } from "../accounting";
 import { ValidationError, type ValidationIssue } from "./errors";
-import type { BetPatchRecord, NewBetRecord, NewSelectionRecord, NewSlipRecord, SlipPatchRecord } from "./repository";
+import type { BetPatchRecord, NewBetRecord, NewSelectionRecord, NewSlipRecord, PreferencesRecord, SlipPatchRecord } from "./repository";
 
 /**
  * Input checking. Every function collects ALL problems before throwing one
@@ -81,7 +81,7 @@ function parseStake(value: unknown, field: string, issues: Issues): number | nul
   return null;
 }
 
-function parseOdds(value: unknown, field: string, issues: Issues): number | null {
+export function parseOdds(value: unknown, field: string, issues: Issues): number | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 1 || value > MAX_ODDS) {
     issues.add(field, "Odds must be a decimal number of at least 1.00");
@@ -337,4 +337,78 @@ export function parseUpdateSlip(input: unknown): ParsedSlipUpdate {
   }
   issues.throwIfAny();
   return { patch, selections };
+}
+
+// Preferences ---------------------------------------------------------------------------
+
+const MAX_PREF_ITEMS = 20;
+const SLIP_STYLES = ["cautious", "balanced", "ambitious"] as const;
+const DETAIL_LEVELS = ["brief", "standard", "detailed"] as const;
+
+/** Trimmed, 1 to 80 characters each, repeats dropped (ignoring case, first spelling kept), at most 20. */
+function parseTextList(value: unknown, field: string, issues: Issues): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    issues.add(field, "Must be a list");
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  value.forEach((raw: unknown, index) => {
+    const text = requiredText(raw, `${field}[${index}]`, 80, issues);
+    if (text !== null && !seen.has(text.toLowerCase())) {
+      seen.add(text.toLowerCase());
+      out.push(text);
+    }
+  });
+  if (out.length > MAX_PREF_ITEMS) {
+    issues.add(field, `Choose at most ${MAX_PREF_ITEMS}`);
+    return [];
+  }
+  return out;
+}
+
+export function parsePreferences(input: unknown): PreferencesRecord {
+  const issues = new Issues();
+  if (!isPlainObject(input)) {
+    issues.add("input", "Expected an object");
+    issues.throwIfAny();
+  }
+  const i = input as Record<string, unknown>;
+
+  const sports = parseTextList(i.favoriteSports, "favoriteSports", issues);
+  const preferred = parseTextList(i.preferredMarkets, "preferredMarkets", issues);
+  const avoided = parseTextList(i.avoidedMarkets, "avoidedMarkets", issues);
+
+  const preferredLower = new Set(preferred.map((m) => m.toLowerCase()));
+  for (const market of avoided) {
+    if (preferredLower.has(market.toLowerCase())) issues.add("avoidedMarkets", `${market} is in both preferred and avoided markets`);
+  }
+
+  let style: PreferencesRecord["slip_style"] = null;
+  if (i.slipStyle !== undefined && i.slipStyle !== null) {
+    if ((SLIP_STYLES as readonly unknown[]).includes(i.slipStyle)) style = i.slipStyle as PreferencesRecord["slip_style"];
+    else issues.add("slipStyle", `Choose one of: ${SLIP_STYLES.join(", ")}`);
+  }
+
+  let detail: PreferencesRecord["detail_level"] = "standard";
+  if (i.detailLevel !== undefined && i.detailLevel !== null) {
+    if ((DETAIL_LEVELS as readonly unknown[]).includes(i.detailLevel)) detail = i.detailLevel as PreferencesRecord["detail_level"];
+    else issues.add("detailLevel", `Choose one of: ${DETAIL_LEVELS.join(", ")}`);
+  }
+
+  const min = parseOdds(i.targetOddsMin, "targetOddsMin", issues);
+  const max = parseOdds(i.targetOddsMax, "targetOddsMax", issues);
+  if (min !== null && max !== null && min > max) issues.add("targetOddsMax", "The highest target can't be below the lowest");
+
+  issues.throwIfAny();
+  return {
+    favorite_sports: sports,
+    preferred_markets: preferred,
+    avoided_markets: avoided,
+    slip_style: style,
+    target_odds_min: min,
+    target_odds_max: max,
+    detail_level: detail,
+  };
 }
