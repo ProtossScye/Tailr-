@@ -1,6 +1,6 @@
 # Status and handoff
 
-Last updated: 2026-11-04 (frontend merged; slip tables, slip API and preferences added). Update this at the end of every work session.
+Last updated: 2026-11-04 (frontend merged; slip tables, slip API, preferences and text parser added). Update this at the end of every work session.
 
 ## Done
 
@@ -29,6 +29,12 @@ Last updated: 2026-11-04 (frontend merged; slip tables, slip API and preferences
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
 - **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts now save to the user's account (step 9).
+- **Phase two, step 11: text slip parser** (no database change):
+  - `lib/parser/parse-slip-text.ts`: plain deterministic code, not AI. Reads pasted text into selections (event, pick, optional market, optional decimal odds) with a confidence (high, medium, low), the fields the text did not give, the lines it set aside, and warnings. Also reads a named bookmaker, a labelled booking code and a stated total.
+  - It reads only what the text says: odds, markets, sports, fixtures and booking codes are never added or looked up. A sport only comes from a header line such as "Football:". American, fractional and comma odds, and odds below 1.00, are refused with a warning, never converted. A bare number like 2.5 or a time like 12.30 is not read as odds. A stated total that does not match the legs is called out. Booking codes always carry a warning that Tailr cannot check them. Output is an untrusted draft.
+  - Written test-first: 40+ pasted-slip fixtures (including chatter, hidden instructions, ambiguous and oversized input), "nothing is invented" checks, a 500-case fuzz test, a backtracking speed check, and a round trip with the Create page's own "Copy slip text". Break-tested: 13 deliberate mutations, all caught.
+  - `POST /api/slips/parse` `{ text }` (signed-in only, up to 10,000 characters): returns the draft. Saves nothing, does not keep or log the text, touches no stored data (a test fails if the repository is touched).
+  - Create (Adapt a slip): Read selections, then a review list. Complete selections are added to the slip in one click; incomplete ones can be filled in by hand; unused lines are shown. Nothing is added until the person clicks. Screenshots are not supported yet.
 - **Phase two, step 10: preferences** (migration `20261104074702_create_user_preferences`, applied to the live project):
   - `user_preferences`, one row per user, private (4 policies, `anon` has nothing): favourite sports, preferred markets, avoided markets, slip style (cautious, balanced, ambitious), optional target odds range, explanation level (brief, standard, detailed), and when the person last saved. Rules in the database: at most 20 items of 1 to 80 characters per list, a market cannot be both preferred and avoided, odds at least 1, min not above max.
   - `save_preferences` (SECURITY INVOKER, owner from the session) creates or replaces the row; every field is replaced, so a field left out is cleared. `anon` cannot execute it.
@@ -81,7 +87,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8, 9 and 10 are done. Next: **step 11** text slip parser (test fixtures first), **step 12** AI adapter, **step 13** suggested changes. Do not start the parser or AI work before step 10 is merged (merge the feat/preferences PR first).
+Phase two, in order: steps 8 to 11 are done. Next: **step 12** AI adapter, **step 13** suggested changes. Do not start suggested changes (step 13) before step 12 is merged. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
 
 Older notes:
 

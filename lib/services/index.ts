@@ -4,6 +4,8 @@ export { createSlip, deleteSlip, getSlip, listSlips, updateSlip } from "./slips"
 export type { SlipServiceDeps } from "./slips";
 export { clearPreferences, getPreferences, savePreferences } from "./preferences";
 export type { PreferencesServiceDeps } from "./preferences";
+export { MAX_PASTE_CHARS, readSlipText } from "./slip-parse";
+export type { ParsedSelection, ParsedSlip } from "../parser/parse-slip-text";
 export { NotFoundError, RepositoryError, ValidationError } from "./errors";
 export type { ValidationIssue } from "./errors";
 export { createSupabaseBetRepository, createSupabasePreferencesRepository, createSupabaseSlipRepository } from "./supabase-repository";
