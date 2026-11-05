@@ -5,7 +5,11 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Tailr", template: "%s · Tailr" },
-  description: "Track your bets and see how you are really doing.",
+  description: "Track the bets you place and see how you are really doing. A bet tracker and slip assistant.",
+  applicationName: "Tailr",
+  // Opens full screen when added to an iPhone home screen.
+  appleWebApp: { capable: true, title: "Tailr", statusBarStyle: "black-translucent" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {

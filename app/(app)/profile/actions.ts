@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { newPasswordProblem } from "@/lib/auth/validate";
 
 export type ProfileFormState = { error?: string; message?: string } | undefined;
 
@@ -28,4 +29,34 @@ export async function saveDisplayName(_prev: ProfileFormState, formData: FormDat
   }
   revalidatePath("/", "layout");
   return { message: "Name saved." };
+}
+
+/**
+ * Changes the password of the signed-in person. The current password is checked first, so a phone
+ * left unlocked cannot be used to lock the owner out.
+ */
+export async function changePassword(_prev: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
+  const current = String(formData.get("current") ?? "");
+  const next = String(formData.get("password") ?? "");
+  if (current === "") return { error: "Enter your current password." };
+  const problem = newPasswordProblem(next, String(formData.get("confirm") ?? ""));
+  if (problem) return { error: problem };
+  if (next === current) return { error: "Choose a password different from your current one." };
+
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const email = data?.claims?.email;
+  if (typeof email !== "string" || email === "") return { error: "Your session has ended. Sign in again." };
+
+  const { error: checkError } = await supabase.auth.signInWithPassword({ email, password: current });
+  if (checkError) return { error: "Your current password is wrong." };
+
+  const { error } = await supabase.auth.updateUser({ password: next });
+  if (error) {
+    if (error.code === "same_password") return { error: "Choose a password different from your current one." };
+    if (error.code === "weak_password") return { error: "That password is too easy to guess. Try a longer or less common one." };
+    console.error("[profile] could not change password:", error.code ?? "no code");
+    return { error: "Could not change your password. Try again." };
+  }
+  return { message: "Password changed." };
 }

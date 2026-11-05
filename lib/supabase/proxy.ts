@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "./env";
 
 /** Paths a signed-out visitor may open. Everything else needs a session. */
-export const PUBLIC_PATHS = ["/", "/sign-in", "/sign-up", "/auth"];
+export const PUBLIC_PATHS = ["/", "/sign-in", "/sign-up", "/verify-email", "/forgot-password", "/reset-password", "/auth"];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => (p === "/" ? pathname === "/" : pathname === p || pathname.startsWith(`${p}/`)));
