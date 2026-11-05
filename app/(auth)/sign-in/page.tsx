@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { AuthForm } from "../auth-form";
-import { signIn } from "../actions";
+import { SignInForm } from "../forms";
 import { safeNext } from "@/lib/api/safe-next";
 import { LogoMark } from "@/components/icons";
 
@@ -23,7 +22,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
             That confirmation link is invalid or has expired. Sign in, or sign up again.
           </p>
         ) : null}
-        <AuthForm action={signIn} submitLabel="Sign in" passwordAutoComplete="current-password" next={next ? safeNext(next) : undefined} />
+        <SignInForm next={next ? safeNext(next) : undefined} />
         <p className="auth-foot">
           No account? <Link href="/sign-up">Create one</Link>
         </p>

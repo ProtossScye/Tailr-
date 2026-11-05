@@ -8,9 +8,11 @@ import { useAllBets, usePreferences } from "@/lib/client/hooks";
 import { hasAnyPreference } from "@/lib/client/preferences";
 import { UNSPECIFIED, bookmakerOf, groupBets } from "@/lib/client/stats";
 import { DownloadIcon, LogoutIcon } from "@/components/icons";
+import { InstallPrompt } from "@/components/install-prompt";
 import { PageHeader, Segmented, initialsOf } from "@/components/ui";
 import { useCurrentUser } from "@/components/user-context";
 import { saveDisplayName } from "./actions";
+import { PasswordSection } from "./password-form";
 
 type Theme = "system" | "dark" | "light";
 
@@ -241,6 +243,15 @@ export function ProfileView() {
             </Link>
           </span>
         </div>
+      </section>
+
+      <PasswordSection />
+
+      <section className="section" aria-labelledby="install-title">
+        <h2 className="section-title" id="install-title">
+          App
+        </h2>
+        <InstallPrompt />
       </section>
 
       <section className="section" aria-labelledby="app-title">

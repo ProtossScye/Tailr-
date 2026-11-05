@@ -112,6 +112,18 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* No grey flash when tapping, and no double-tap zoom delay on controls. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+a,
+button,
+input,
+select,
+textarea,
+summary,
+label {
+  touch-action: manipulation;
 }
 
 body {
@@ -122,6 +134,9 @@ body {
   font-size: 15px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
+  /* Stops the page bouncing sideways or chaining scroll while still allowing pull to refresh. */
+  overscroll-behavior-x: none;
+  overflow-x: hidden;
 }
 
 h1,
@@ -177,7 +192,7 @@ button {
 }
 
 .main {
-  padding: var(--s4) var(--s4) calc(var(--nav-h) + 96px + env(safe-area-inset-bottom));
+  padding: calc(var(--s4) + env(safe-area-inset-top)) calc(var(--s4) + env(safe-area-inset-right)) calc(var(--nav-h) + 96px + env(safe-area-inset-bottom)) calc(var(--s4) + env(safe-area-inset-left));
   max-width: 640px;
   margin: 0 auto;
 }
@@ -798,6 +813,7 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--muted);
+  min-height: 40px;
   padding: 8px 14px;
   border-radius: 999px;
   font-weight: 650;
@@ -845,6 +861,8 @@ button {
 .select,
 .textarea {
   width: 100%;
+  /* 16px or larger, or iPhones zoom the page in when a field is tapped. */
+  font-size: 16px;
   min-height: 46px;
   padding: 10px var(--s3);
   background: var(--surface);
@@ -942,7 +960,9 @@ button {
 .text-btn {
   border: 0;
   background: none;
-  padding: 6px 4px;
+  /* A comfortable thumb target, without changing how it looks. */
+  min-height: 44px;
+  padding: 6px 8px;
   font-weight: 650;
   font-size: 14px;
   color: var(--accent-text);
@@ -1273,7 +1293,7 @@ a.bet-row:hover {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: var(--s6) var(--s4);
+  padding: calc(var(--s6) + env(safe-area-inset-top)) var(--s4) calc(var(--s6) + env(safe-area-inset-bottom));
 }
 
 .auth-card {
@@ -1398,5 +1418,311 @@ a.settings-row:hover {
 @media (min-width: 960px) {
   .topbar > .logo-mark {
     display: none;
+  }
+}
+
+/* ---- phone app feel ------------------------------------------------------------------- */
+
+/* Navigation and buttons are controls, not text to select by accident. */
+.nav-bottom,
+.sidebar,
+.btn,
+.tab,
+.text-btn,
+.icon-btn {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.icon-btn {
+  width: 44px;
+  height: 44px;
+}
+
+/* ---- account forms --------------------------------------------------------------------- */
+
+.pw-wrap {
+  position: relative;
+}
+
+.pw-wrap .input {
+  padding-right: 64px;
+}
+
+.pw-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  min-width: 56px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-weight: 650;
+  font-size: 14px;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.code-input {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  font-variant-numeric: tabular-nums;
+  padding-left: calc(var(--s3) + 0.35em);
+}
+
+.code-input::placeholder {
+  letter-spacing: 0.35em;
+  opacity: 0.4;
+}
+
+/* ---- steps (welcome, landing) ----------------------------------------------------------- */
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s4);
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--s3);
+  align-items: start;
+}
+
+.steps p {
+  margin-top: 2px;
+}
+
+.steps .link-more {
+  display: inline-block;
+  margin-top: var(--s1);
+}
+
+.step-n {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--tint);
+  color: var(--tint-text);
+  font-weight: 750;
+  font-size: 14px;
+}
+
+.welcome .auth-card {
+  gap: var(--s5);
+}
+
+/* ---- landing ---------------------------------------------------------------------------- */
+
+.landing {
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  overflow-x: clip;
+}
+
+.landing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--s4);
+}
+
+.hero,
+.section-wide,
+.band-inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--s8) var(--s4);
+}
+
+.hero {
+  display: grid;
+  gap: var(--s5);
+  padding-top: var(--s10);
+  padding-bottom: var(--s10);
+}
+
+.eyebrow {
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(36px, 9vw, 64px);
+  font-weight: 780;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  max-width: 14ch;
+  text-wrap: balance;
+}
+
+.hero h1 em {
+  font-style: normal;
+  color: var(--accent-text);
+}
+
+.lede {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 54ch;
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
+.hero-cta .btn {
+  min-height: 48px;
+  padding-inline: var(--s6);
+}
+
+.fine {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.band {
+  background: var(--surface);
+  border-block: 1px solid var(--line);
+}
+
+.band-inner {
+  display: grid;
+  gap: var(--s4);
+}
+
+.band h2,
+.section-wide h2 {
+  font-size: clamp(24px, 5vw, 32px);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+}
+
+.section-wide {
+  display: grid;
+  gap: var(--s5);
+}
+
+.ledger {
+  width: 100%;
+  max-width: 520px;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+.ledger th,
+.ledger td {
+  padding: 10px 0;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  font-weight: 500;
+}
+
+.ledger thead th {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ledger tfoot th,
+.ledger tfoot td {
+  font-weight: 750;
+}
+
+.ledger .r {
+  text-align: right;
+}
+
+.ledger .gain {
+  color: var(--gain);
+}
+
+.ledger .loss {
+  color: var(--loss);
+}
+
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s3);
+}
+
+.cards li {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--s5);
+  display: grid;
+  gap: var(--s2);
+}
+
+.cards h3 {
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: -0.015em;
+}
+
+.cards p {
+  color: var(--muted);
+}
+
+.plain {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: var(--s3);
+}
+
+.closing {
+  text-align: left;
+  padding-bottom: var(--s10);
+}
+
+.landing-foot {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: var(--s6) var(--s4) calc(var(--s8) + env(safe-area-inset-bottom));
+  color: var(--muted);
+  font-size: 13px;
+  display: grid;
+  gap: var(--s2);
+}
+
+@media (min-width: 760px) {
+  .cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .hero,
+  .section-wide,
+  .band-inner {
+    padding-inline: var(--s8);
+  }
+  .landing-bar {
+    padding-inline: var(--s8);
+  }
+}
+
+@media (pointer: coarse) {
+  .btn-small {
+    min-height: 44px;
   }
 }
