@@ -11,6 +11,7 @@ import { usePreferences } from "@/lib/client/hooks";
 import { draftToText, loadDrafts, type DraftLeg, type SlipDraft } from "@/lib/client/drafts";
 import { deleteSlip, fetchSlip, fetchSlips, moveLocalDraftsToAccount, saveSlip } from "@/lib/client/slips";
 import { MAX_LEGS } from "@/lib/client/bet-form";
+import { applyRemoval, suggestChanges, type Suggestion } from "@/lib/client/suggest";
 import { COMMON_MARKETS, checkTarget, defaultDraftName, inAvoided, legOdds, outsidePreferred, slipCombinedOdds, sportChoices } from "@/lib/client/slip";
 import { CopyIcon, EditIcon, PlusIcon, SlipArt, TrashIcon } from "@/components/icons";
 import { PageHeader, Segmented } from "@/components/ui";
@@ -40,6 +41,9 @@ export function CreateView({ draftId }: { draftId?: string }) {
   // Worked out when the text is read, so it stays put as selections are added to the slip.
   const [readCombined, setReadCombined] = useState<number | null>(null);
   const [aiAvailable, setAiAvailable] = useState(false);
+  // Suggested changes. Nothing is applied until the person accepts it.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [readError, setReadError] = useState<string | null>(null);
   const [targetMin, setTargetMin] = useState("");
   const [targetMax, setTargetMax] = useState("");
@@ -94,6 +98,24 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const outside = useMemo(() => outsidePreferred(legs, preferred), [legs, preferred]);
   const unwanted = useMemo(() => inAvoided(legs, avoided), [legs, avoided]);
   const missingOdds = legs.filter((l) => legOdds(l) === null).length;
+
+  const suggestions = useMemo(
+    () =>
+      suggestChanges(
+        { legs, avoidedMarkets: avoided, preferredMarkets: preferred, targetMin: min.ok ? min.value : null, targetMax: max.ok ? max.value : null },
+        dismissed,
+      ),
+    [legs, avoided, preferred, min, max, dismissed],
+  );
+
+  const acceptSuggestions = (list: Suggestion[]) => {
+    const remove = [...new Set(list.flatMap((s) => s.remove))];
+    if (remove.length === 0) return;
+    setLegs((prev) => applyRemoval(prev, remove));
+    setEditing(null);
+    setNotice(`Removed ${remove.length} ${remove.length === 1 ? "selection" : "selections"} from this slip. Nothing is saved until you save the slip.`);
+  };
+  const rejectSuggestion = (key: string) => setDismissed((prev) => new Set([...prev, key]));
 
   const setField = (key: keyof DraftLeg, value: string) => {
     setComposer((prev) => ({ ...prev, [key]: value }));
@@ -683,9 +705,81 @@ export function CreateView({ draftId }: { draftId?: string }) {
                     {avoided.length > 0 ? ` Selections in markets you avoid (${avoided.join(", ")}) are marked too.` : ""}
                   </span>
                 </div>
-                <p className="banner">
-                  Suggested changes arrive with the slip assistant. Until then, edit or remove selections yourself and the odds update as you go.
-                </p>
+              </div>
+            ) : null}
+
+            {mode === "adapt" ? (
+              <div className="card card-pad stack" aria-live="polite">
+                <h3 style={{ fontSize: 16 }}>Suggested changes</h3>
+                {!suggestOpen ? (
+                  <>
+                    <p className="muted" style={{ fontSize: 13 }}>
+                      Tailr can point out selections to take out, based on your own entries and the preferences above. It only ever suggests removing a selection, and nothing changes until you accept it.
+                    </p>
+                    <div className="btn-row">
+                      <button type="button" className="btn" onClick={() => setSuggestOpen(true)}>
+                        Suggest changes
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {suggestions.suggestions.length === 0 ? <p className="muted">No changes to suggest right now.</p> : null}
+                    <ul className="stack" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                      {suggestions.suggestions.map((s) => (
+                        <li key={s.key} className="card card-pad stack" style={{ gap: 8 }}>
+                          <p>{s.reason}</p>
+                          <p className="muted" style={{ fontSize: 13 }}>
+                            {s.tradeoff}
+                          </p>
+                          <div>
+                            <span className="label">Would remove</span>
+                            <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                              {s.remove.map((i) => (
+                                <li key={i} style={{ textDecoration: "line-through" }}>
+                                  {legs[i]?.event}: {legs[i]?.selection}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="btn-row">
+                            <button type="button" className="btn btn-primary" onClick={() => acceptSuggestions([s])}>
+                              Accept
+                            </button>
+                            <button type="button" className="btn" onClick={() => rejectSuggestion(s.key)}>
+                              Keep it
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    {suggestions.notes.map((n) => (
+                      <p key={n} className="muted" style={{ fontSize: 13 }}>
+                        {n}
+                      </p>
+                    ))}
+                    <p className="muted" style={{ fontSize: 13 }}>
+                      Nothing is added: Tailr has no fixture or odds feed, so it never picks a selection or changes your odds for you.
+                    </p>
+                    <div className="btn-row">
+                      {suggestions.suggestions.length > 1 ? (
+                        <button type="button" className="btn btn-primary" onClick={() => acceptSuggestions(suggestions.suggestions)}>
+                          Accept all
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          setSuggestOpen(false);
+                          setDismissed(new Set());
+                        }}
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             ) : null}
 

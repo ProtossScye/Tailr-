@@ -29,6 +29,10 @@ Last updated: 2026-11-04 (frontend merged; slip tables, slip API, preferences an
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
 - **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts now save to the user's account (step 9).
+- **Phase two, step 13: suggested changes** (no database change, no AI, no new API route):
+  - `lib/client/suggest.ts`: plain deterministic code. In Create (Adapt a slip), "Suggest changes" lists selections worth taking out, each with a reason and the trade-off (combined odds before and after). The person accepts or keeps each one, or accepts all; nothing changes until they do, and nothing is saved until they save the slip.
+  - Only removals, worked out from what the person entered and their preferences: a repeated pick, a market they avoid, a market outside their preferred list (selections with no market are never flagged), and, once those are settled, the smallest removal (at most 3, never the whole slip) that brings combined odds inside their target range. If odds are below target it only says so, because Tailr never picks a selection or changes odds. A rejected suggestion is not offered again until the panel is closed.
+  - 21 engine tests; 9 deliberate breaks, all caught (one was missed at first: a repeated pick in an avoided market was suggested twice; test added).
 - **Phase two, step 12: AI adapter** (migration `20261105003927_create_ai_calls`, applied to the live project):
   - Off until `ANTHROPIC_API_KEY` is set on the server (optional `TAILR_AI_MODEL`, `TAILR_AI_TIMEOUT_MS`). The key is never sent to the browser. The provider sits behind a small `AiProvider` interface in `lib/ai/`; the Anthropic implementation is the only one so far.
   - The model must answer through one tool with a fixed schema. The answer is an untrusted draft: it is validated, then grounded in the pasted text (`lib/ai/ground.ts`). Odds, totals, booking codes, bookmakers, sports, markets, events and picks that are not in the text are removed or left blank with a warning. AI reads are never rated "high" and always carry a "Read by AI, check every line" warning. Nothing is saved; the draft is reviewed like the rule-based one.
@@ -93,7 +97,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8 to 12 are done. Next: **step 13** suggested changes. Do not start it before step 12 is merged. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
+Phase two, in order: steps 8 to 13 are done. Next: **step 14** small tracker gaps, **step 15** Telegram, **step 16** private beta. Hosting for live testing comes first. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
 
 Older notes:
 
