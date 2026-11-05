@@ -21,6 +21,7 @@ import type {
   SlipWithSelections,
   StatsBetRow,
 } from "../../lib/services/repository";
+import type { AiUsageRepository } from "../../lib/ai/usage";
 import { asUser } from "./helpers";
 
 /**
@@ -183,5 +184,20 @@ export function createPglitePreferencesRepository(db: PGlite, userId: string | n
       }),
     clearPreferences: () =>
       as(async () => ((await db.query("delete from public.user_preferences")).affectedRows ?? 0) > 0),
+  };
+}
+
+/** Test-only AiUsageRepository that calls the REAL begin_ai_call / finish_ai_call, acting as one user. */
+export function createPgliteAiUsageRepository(db: PGlite, userId: string | null): AiUsageRepository {
+  return {
+    begin: (purpose, inputChars) =>
+      asUser(db, userId, async () => {
+        const r = await db.query<{ id: string | null }>("select public.begin_ai_call($1, $2) as id", [purpose, inputChars]);
+        return r.rows[0]!.id;
+      }),
+    finish: (id, x) =>
+      asUser(db, userId, async () => {
+        await db.query("select public.finish_ai_call($1::uuid, $2, $3, $4, $5, $6)", [id, x.status, x.model, x.inputTokens, x.outputTokens, Math.round(x.latencyMs)]);
+      }),
   };
 }

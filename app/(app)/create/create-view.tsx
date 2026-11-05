@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { parseOdds } from "@/lib/client/money";
 import { messageFor } from "@/lib/client/api";
 import type { ParsedSlipJson } from "@/lib/api/types";
-import { CONFIDENCE_LABEL, MAX_PASTE_CHARS, isComplete, missingNote, parsePastedText, toDraftLeg } from "@/lib/client/parse";
+import { CONFIDENCE_LABEL, MAX_PASTE_CHARS, combinedFromRead, isComplete, fetchAiStatus, missingNote, parsePastedText, readWithAi, toDraftLeg } from "@/lib/client/parse";
 import { usePreferences } from "@/lib/client/hooks";
 import { draftToText, loadDrafts, type DraftLeg, type SlipDraft } from "@/lib/client/drafts";
 import { deleteSlip, fetchSlip, fetchSlips, moveLocalDraftsToAccount, saveSlip } from "@/lib/client/slips";
@@ -37,6 +37,9 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [review, setReview] = useState<ParsedSlipJson | null>(null);
   const [reading, setReading] = useState(false);
   const [foundCount, setFoundCount] = useState(0);
+  // Worked out when the text is read, so it stays put as selections are added to the slip.
+  const [readCombined, setReadCombined] = useState<number | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
   const [readError, setReadError] = useState<string | null>(null);
   const [targetMin, setTargetMin] = useState("");
   const [targetMax, setTargetMax] = useState("");
@@ -227,14 +230,25 @@ export function CreateView({ draftId }: { draftId?: string }) {
     }
   };
 
-  const readText = async () => {
+  useEffect(() => {
+    let live = true;
+    fetchAiStatus()
+      .then((s) => live && setAiAvailable(s.available))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const readText = async (useAi = false) => {
     if (pasted.trim() === "" || reading) return;
     setReading(true);
     setReadError(null);
     setReview(null);
     try {
-      const result = await parsePastedText(pasted);
+      const result = await (useAi ? readWithAi(pasted) : parsePastedText(pasted));
       setFoundCount(result.selections.length);
+      setReadCombined(combinedFromRead(result.selections));
       setReview(result);
     } catch (error) {
       setReadError(messageFor(error));
@@ -327,10 +341,20 @@ export function CreateView({ draftId }: { draftId?: string }) {
             </span>
           </div>
           <div className="btn-row">
-            <button type="button" className="btn btn-primary" onClick={readText} disabled={reading || pasted.trim() === ""}>
+            <button type="button" className="btn btn-primary" onClick={() => readText(false)} disabled={reading || pasted.trim() === ""}>
               {reading ? "Reading" : "Read selections"}
             </button>
+            {aiAvailable ? (
+              <button type="button" className="btn" onClick={() => readText(true)} disabled={reading || pasted.trim() === ""}>
+                Read with AI
+              </button>
+            ) : null}
           </div>
+          {aiAvailable ? (
+            <p className="hint">
+              Read with AI sends this text to an AI service to read it. The result is checked against your text, anything not in it is removed, and it can still make mistakes. Limited to a few reads an hour.
+            </p>
+          ) : null}
           {readError ? (
             <p className="banner banner-error" role="alert">
               {readError}
@@ -354,7 +378,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
                 </ul>
               ) : null}
 
-              {review.bookmaker || review.bookingCode || review.totalOdds !== null ? (
+              {review.bookmaker || review.bookingCode || review.totalOdds !== null || readCombined !== null ? (
                 <dl className="kv">
                   {review.bookmaker ? (
                     <div>
@@ -372,6 +396,12 @@ export function CreateView({ draftId }: { draftId?: string }) {
                     <div>
                       <dt>Total odds the text states</dt>
                       <dd className="num">{review.totalOdds.toFixed(2)}</dd>
+                    </div>
+                  ) : null}
+                  {readCombined !== null ? (
+                    <div>
+                      <dt>Combined odds from these selections</dt>
+                      <dd className="num">{readCombined.toFixed(2)}</dd>
                     </div>
                   ) : null}
                 </dl>

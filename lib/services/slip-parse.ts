@@ -9,6 +9,11 @@ export const MAX_PASTE_CHARS = 10_000;
  * Saving a slip, and recording a bet, remain separate explicit steps.
  */
 export function readSlipText(input: unknown): ParsedSlip {
+  return parseSlipText(validatePasteText(input));
+}
+
+/** The pasted text from a request body, or a ValidationError. Shared by the rule-based and AI readers. */
+export function validatePasteText(input: unknown): string {
   const issues = new Issues();
   const text = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>).text : undefined;
   if (typeof text !== "string" || text.trim() === "") {
@@ -17,5 +22,5 @@ export function readSlipText(input: unknown): ParsedSlip {
     issues.add("text", `Keep the pasted text under ${MAX_PASTE_CHARS.toLocaleString("en-US")} characters`);
   }
   issues.throwIfAny();
-  return parseSlipText(text as string);
+  return text as string;
 }
