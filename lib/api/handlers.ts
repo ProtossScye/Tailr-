@@ -26,7 +26,9 @@ import {
   type ListSlipsQuery,
 } from "../services";
 import type { BetStatus, Currency } from "../accounting";
-import type { ApiErrorBody } from "./types";
+import { readSlipWithAi, type ReadSlipAiDeps } from "../ai/read-slip";
+import { AiFailedError, AiRateLimitedError, AiUnavailableError } from "../ai/types";
+import type { ApiErrorBody, AiStatusJson } from "./types";
 
 /**
  * Route logic as plain `(deps, Request) => Response` functions, so it can be tested without a
@@ -39,6 +41,7 @@ import type { ApiErrorBody } from "./types";
 export type Deps = ServiceDeps | null;
 export type SlipDeps = SlipServiceDeps | null;
 export type PreferencesDeps = PreferencesServiceDeps | null;
+export type AiDeps = ReadSlipAiDeps | null;
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -59,6 +62,9 @@ async function run<D>(deps: D | null, work: (deps: D) => Promise<Response>): Pro
   } catch (error) {
     if (error instanceof ValidationError) return fail(400, "validation_failed", "Some fields need fixing.", error.issues);
     if (error instanceof NotFoundError) return fail(404, "not_found", `${error.message}.`);
+    if (error instanceof AiRateLimitedError) return fail(429, "rate_limited", "You have used your AI reads for now. Try again later, or use the standard reader.");
+    if (error instanceof AiUnavailableError) return fail(503, "ai_unavailable", "AI reading is not switched on.");
+    if (error instanceof AiFailedError) return fail(502, "ai_failed", "The AI reader could not read that. Try again, or use the standard reader.");
     // Details stay in the server log. Never send database messages to the browser.
     const detail = error instanceof RepositoryError ? `${error.message} (${error.code ?? "no code"})` : error;
     console.error("[api] unexpected error:", detail);
@@ -221,4 +227,18 @@ export function handleClearPreferences(deps: PreferencesDeps): Promise<Response>
  */
 export function handleParseSlip(deps: SlipDeps, request: Request): Promise<Response> {
   return withBody(deps, request, async (_d, body) => json({ data: readSlipText(body) }));
+}
+
+/**
+ * Reads pasted text with AI. Same input and output shape as handleParseSlip, but the answer is an
+ * untrusted draft, checked and grounded in the text. Rate limited per person; nothing is saved and the
+ * text and the answer are not kept or logged.
+ */
+export function handleReadSlipWithAi(deps: AiDeps, request: Request): Promise<Response> {
+  return withBody(deps, request, async (d, body) => json({ data: await readSlipWithAi(d, body) }));
+}
+
+/** Whether AI reading is switched on, so the page only offers it when it can work. */
+export function handleAiStatus(deps: AiDeps): Promise<Response> {
+  return run(deps, async (d) => json({ data: { available: d.provider !== null } satisfies AiStatusJson }));
 }

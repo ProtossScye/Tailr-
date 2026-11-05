@@ -29,6 +29,12 @@ Last updated: 2026-11-04 (frontend merged; slip tables, slip API, preferences an
   - 28 handler tests on the real SQL and privacy rules; 18 deliberate breaks all caught (one was missed at first, the body-size limit, because another rule also rejected the test input; the test now isolates it).
   - `next build` succeeds. Checked on a local production server: signed-out API calls get 401 JSON, `/dashboard` redirects to `/sign-in`, sign-out by GET is refused (405).
 - **Frontend** (merged, PR #1): five-tab app (Home, Bets, Create, Analytics, Profile), bet detail with settle, edit and delete, Add bet form, notifications placeholder. Calls the `/api` routes only. Slip drafts now save to the user's account (step 9).
+- **Phase two, step 12: AI adapter** (migration `20261105003927_create_ai_calls`, applied to the live project):
+  - Off until `ANTHROPIC_API_KEY` is set on the server (optional `TAILR_AI_MODEL`, `TAILR_AI_TIMEOUT_MS`). The key is never sent to the browser. The provider sits behind a small `AiProvider` interface in `lib/ai/`; the Anthropic implementation is the only one so far.
+  - The model must answer through one tool with a fixed schema. The answer is an untrusted draft: it is validated, then grounded in the pasted text (`lib/ai/ground.ts`). Odds, totals, booking codes, bookmakers, sports, markets, events and picks that are not in the text are removed or left blank with a warning. AI reads are never rated "high" and always carry a "Read by AI, check every line" warning. Nothing is saved; the draft is reviewed like the rule-based one.
+  - `ai_calls` (read-only for the owner, `anon` has nothing) logs size, model, token counts, latency and outcome, never the text or the answer. `begin_ai_call` and `finish_ai_call` are SECURITY DEFINER on purpose, so people cannot edit their own log; they act only for the signed-in user. Limits: 10 reads an hour and 40 a day per person, failed calls included. The security advisor lists these two functions as a warning for that reason.
+  - `POST /api/slips/parse-ai` `{ text }` (401, 400, 429 limit, 502 failed or timed out, 503 not switched on) and `GET /api/ai/status`. Create (Adapt a slip) shows "Read with AI" only when switched on, with a note that the text is sent to an AI service.
+  - Tests cover schema validation, grounding (invented odds, fixtures, codes and injected instructions), the provider with a fake network (key never in errors), timeouts, rate limits against the real SQL, and the API.
 - **Phase two, step 11: text slip parser** (no database change):
   - `lib/parser/parse-slip-text.ts`: plain deterministic code, not AI. Reads pasted text into selections (event, pick, optional market, optional decimal odds) with a confidence (high, medium, low), the fields the text did not give, the lines it set aside, and warnings. Also reads a named bookmaker, a labelled booking code and a stated total.
   - It reads only what the text says: odds, markets, sports, fixtures and booking codes are never added or looked up. A sport only comes from a header line such as "Football:". American, fractional and comma odds, and odds below 1.00, are refused with a warning, never converted. A bare number like 2.5 or a time like 12.30 is not read as odds. A stated total that does not match the legs is called out. Booking codes always carry a warning that Tailr cannot check them. Output is an untrusted draft.
@@ -87,7 +93,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8 to 11 are done. Next: **step 12** AI adapter, **step 13** suggested changes. Do not start suggested changes (step 13) before step 12 is merged. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
+Phase two, in order: steps 8 to 12 are done. Next: **step 13** suggested changes. Do not start it before step 12 is merged. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
 
 Older notes:
 

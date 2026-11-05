@@ -2,7 +2,7 @@
  * Reading a pasted slip. The server reads the text and returns a draft to review; nothing is saved
  * and nothing is looked up. A selection only becomes part of the slip when the person adds it.
  */
-import type { ParsedSlipJson } from "@/lib/api/types";
+import type { AiStatusJson, ParsedSlipJson } from "@/lib/api/types";
 import { api } from "./api";
 import type { DraftLeg } from "./drafts";
 import { oddsText } from "./slips";
@@ -12,6 +12,11 @@ export type ParsedSelectionJson = ParsedSlipJson["selections"][number];
 export const MAX_PASTE_CHARS = 10_000;
 
 export const parsePastedText = (text: string) => api<ParsedSlipJson>("/api/slips/parse", { method: "POST", body: { text } });
+
+/** The same reading, done by AI and then checked against the text on the server. */
+export const readWithAi = (text: string) => api<ParsedSlipJson>("/api/slips/parse-ai", { method: "POST", body: { text } });
+
+export const fetchAiStatus = () => api<AiStatusJson>("/api/ai/status");
 
 /** A selection that has both an event and a pick can go straight onto the slip. */
 export const isComplete = (s: ParsedSelectionJson): s is ParsedSelectionJson & { event: string; selection: string } => s.event !== null && s.selection !== null;
@@ -36,3 +41,13 @@ export const CONFIDENCE_LABEL: Record<ParsedSelectionJson["confidence"], string>
   medium: "Check this",
   low: "Needs your help",
 };
+
+/**
+ * The odds multiplied together, only when EVERY read selection has odds, so a combined figure is never
+ * shown for a slip with a missing price. It is arithmetic on what the text said, to compare with any total
+ * the text states.
+ */
+export function combinedFromRead(selections: readonly Pick<ParsedSelectionJson, "odds">[]): number | null {
+  if (selections.length === 0 || selections.some((s) => s.odds === null)) return null;
+  return Math.round(selections.reduce((acc, s) => acc * (s.odds as number), 1) * 1000) / 1000;
+}

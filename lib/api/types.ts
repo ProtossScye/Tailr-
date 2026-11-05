@@ -14,7 +14,7 @@ export type Serialized<T> = T extends Date
       ? { [K in keyof T]: Serialized<T[K]> }
       : T;
 
-export type ApiErrorCode = "unauthenticated" | "validation_failed" | "not_found" | "invalid_json" | "server_error";
+export type ApiErrorCode = "unauthenticated" | "validation_failed" | "not_found" | "invalid_json" | "server_error" | "rate_limited" | "ai_unavailable" | "ai_failed";
 
 export interface ApiErrorBody {
   error: { code: ApiErrorCode; message: string; issues?: { field: string; message: string }[] };
@@ -29,3 +29,6 @@ export type SlipJson = Serialized<SlipView>;
 export type SlipPageJson = Serialized<SlipPage>;
 export type PreferencesJson = Serialized<PreferencesView>;
 export type ParsedSlipJson = ParsedSlip;
+export interface AiStatusJson {
+  available: boolean;
+}

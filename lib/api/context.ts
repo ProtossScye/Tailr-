@@ -7,6 +7,9 @@ import {
   type SlipServiceDeps,
 } from "../services";
 import { createClient } from "../supabase/server";
+import { createProviderFromEnv, timeoutFromEnv } from "../ai/config";
+import { createSupabaseAiUsageRepository } from "../ai/usage";
+import type { ReadSlipAiDeps } from "../ai/read-slip";
 
 /**
  * Builds the service dependencies for the current request, acting AS the signed-in user
@@ -34,4 +37,12 @@ export async function getPreferencesDeps(): Promise<PreferencesServiceDeps | nul
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return null;
   return { repo: createSupabasePreferencesRepository(supabase) };
+}
+
+/** For AI reading. The provider key stays on the server; null when not signed in. The provider is null when no key is set. */
+export async function getAiDeps(): Promise<ReadSlipAiDeps | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) return null;
+  return { provider: createProviderFromEnv(), usage: createSupabaseAiUsageRepository(supabase), timeoutMs: timeoutFromEnv() };
 }

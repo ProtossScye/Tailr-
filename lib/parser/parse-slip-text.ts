@@ -134,7 +134,7 @@ function cleanLine(raw: string): string {
 
 const stripTrailingPunctuation = (text: string): string => text.replace(/[,;:\s]+$/, "").trim();
 
-function findBookmaker(line: string): string | null {
+export function findBookmaker(line: string): string | null {
   for (const [name, pattern] of BOOKMAKERS) if (pattern.test(line)) return name;
   return null;
 }
@@ -275,6 +275,25 @@ function classify(parts: string[]): Classified {
     picks.push(part);
   }
   return { event, market, picks };
+}
+
+/** Checks that apply however a slip was read: the same pick twice, and a stated total that does not match the legs. */
+export function collectSlipWarnings(selections: readonly ParsedSelection[], totalOdds: number | null): string[] {
+  const out: string[] = [];
+  const seen = new Map<string, number>();
+  for (const s of selections) {
+    if (s.event === null || s.selection === null) continue;
+    const key = `${s.event.toLowerCase()}|${s.selection.toLowerCase()}`;
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+    if (seen.get(key) === 2) out.push(`"${s.event}: ${s.selection}" appears more than once on the slip.`);
+  }
+  if (totalOdds !== null && selections.length > 0 && selections.every((s) => s.odds !== null)) {
+    const product = selections.reduce((acc, s) => acc * (s.odds as number), 1);
+    if (Math.abs(product - totalOdds) / totalOdds > 0.01) {
+      out.push(`The total odds on the slip (${totalOdds.toFixed(2)}) do not match the product of the selections' odds (${product.toFixed(2)}).`);
+    }
+  }
+  return out;
 }
 
 export function parseSlipText(input: string): ParsedSlip {
@@ -437,20 +456,7 @@ export function parseSlipText(input: string): ParsedSlip {
   }
   const selections = drafts.map(finalize);
 
-  const seen = new Map<string, number>();
-  for (const s of selections) {
-    if (s.event === null || s.selection === null) continue;
-    const key = `${s.event.toLowerCase()}|${s.selection.toLowerCase()}`;
-    seen.set(key, (seen.get(key) ?? 0) + 1);
-    if (seen.get(key) === 2) warn(`"${s.event}: ${s.selection}" appears more than once on the slip.`);
-  }
-
-  if (totalOdds !== null && selections.length > 0 && selections.every((s) => s.odds !== null)) {
-    const product = selections.reduce((acc, s) => acc * (s.odds as number), 1);
-    if (Math.abs(product - totalOdds) / totalOdds > 0.01) {
-      warn(`The total odds on the slip (${totalOdds.toFixed(2)}) do not match the product of the selections' odds (${product.toFixed(2)}).`);
-    }
-  }
+  collectSlipWarnings(selections, totalOdds).forEach(warn);
 
   return { selections, bookmaker, bookingCode, totalOdds, ignoredLines, warnings };
 }
