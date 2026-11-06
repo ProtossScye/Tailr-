@@ -21,7 +21,10 @@ import {
 import { isoToLagosLocal } from "@/lib/client/dates";
 import { fetchSlip } from "@/lib/client/slips";
 import { ChevronLeftIcon, PlusIcon } from "@/components/icons";
+import { MarketPicker, SportPicker } from "@/components/leg-pickers";
 import { ErrorState, LoadingBlock, Segmented } from "@/components/ui";
+import { usePreferences } from "@/lib/client/hooks";
+import { SAME_GAME_NOTE, isSameGame, marketAfterSportChange, nextLinked, quickSports, removeLinkedAt, resolveLinkedEvents } from "@/lib/client/leg-entry";
 
 function Field({
   id,
@@ -68,6 +71,10 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
   const [linkedDraft, setLinkedDraft] = useState<string | null>(null);
   const [maxPlaced, setMaxPlaced] = useState<string | undefined>(undefined);
   const formRef = useRef<HTMLFormElement>(null);
+  // linked[i]: selection i is the same event as the one above it. Only a typing shortcut; saved bets store plain events.
+  const [linked, setLinked] = useState<boolean[]>([]);
+  const [prefs] = usePreferences();
+  const favoriteSports = prefs.state === "ready" ? prefs.data.favoriteSports : [];
 
   useEffect(() => {
     setMaxPlaced(isoToLagosLocal(new Date()));
@@ -101,8 +108,13 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
     setErrors((prev) => (prev[key as string] ? { ...prev, [key as string]: "" } : prev));
   };
 
+  const isLinked = (i: number) => i > 0 && (linked[i] ?? false);
+
   const setLeg = (index: number, patch: Partial<LegValues>) => {
-    setValues((prev) => ({ ...prev, legs: prev.legs.map((leg, i) => (i === index ? { ...leg, ...patch } : leg)) }));
+    setValues((prev) => {
+      const legs = prev.legs.map((leg, i) => (i === index ? { ...leg, ...patch } : leg));
+      return { ...prev, legs: resolveLinkedEvents(legs, prev.legs.map((_, i) => isLinked(i))) };
+    });
     setErrors((prev) => {
       const next = { ...prev };
       for (const key of Object.keys(patch)) {
@@ -112,8 +124,41 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
     });
   };
 
-  const addLeg = () => setValues((prev) => (prev.legs.length >= MAX_LEGS ? prev : { ...prev, legs: [...prev.legs, emptyLeg()] }));
-  const removeLeg = (index: number) => setValues((prev) => ({ ...prev, legs: prev.legs.filter((_, i) => i !== index) }));
+  const changeSport = (index: number, sport: string) => setLeg(index, { sport, market: marketAfterSportChange(values.legs[index]?.market ?? "", sport) });
+
+  // Linking a selection to the one above makes it the same event and sport, so only the market and pick are left to enter.
+  const setSameEvent = (index: number, on: boolean) => {
+    setLinked((prev) => {
+      const next = values.legs.map((_, i) => prev[i] ?? false);
+      next[index] = on;
+      return next;
+    });
+    if (on) {
+      const above = values.legs[index - 1];
+      setLeg(index, { event: above?.event ?? "", sport: above?.sport ?? "" });
+    }
+  };
+
+  const addLeg = () => {
+    if (values.legs.length >= MAX_LEGS) return;
+    const count = values.legs.length;
+    const nextLinks = nextLinked(
+      values.legs.map((_, i) => isLinked(i)),
+      count,
+    );
+    const above = values.legs[count - 1];
+    setLinked(nextLinks);
+    // A new selection starts on the same sport as the one above, and on the same event too if that one was part of a run.
+    setValues((prev) => ({
+      ...prev,
+      legs: [...prev.legs, { ...emptyLeg(), sport: above?.sport ?? "", event: nextLinks[count] ? (above?.event ?? "") : "" }],
+    }));
+  };
+
+  const removeLeg = (index: number) => {
+    setLinked((prev) => removeLinkedAt(values.legs.map((_, i) => prev[i] ?? false), index));
+    setValues((prev) => ({ ...prev, legs: prev.legs.filter((_, i) => i !== index) }));
+  };
 
   const focusFirstError = () => {
     requestAnimationFrame(() => {
@@ -159,6 +204,7 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
 
   const symbol = values.currency === "NGN" ? "₦" : "$";
   const combined = legsCombinedOdds(values.legs);
+  const sameGame = isSameGame(values.legs);
   const backHref = mode === "edit" && betId ? `/bets/${betId}` : "/bets";
 
   return (
@@ -289,18 +335,43 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
                   Remove selection {i + 1}
                 </button>
               ) : null}
-              <Field id={`event-${i}`} label="Event" error={errors[`legs.${i}.event`]}>
-                <input
-                  id={`event-${i}`}
-                  className="input"
-                  autoComplete="off"
-                  placeholder="Arsenal v Chelsea"
-                  value={leg.event}
-                  onChange={(e) => setLeg(i, { event: e.target.value })}
-                  aria-invalid={errors[`legs.${i}.event`] ? true : undefined}
-                  aria-describedby={describe(`event-${i}`, errors[`legs.${i}.event`])}
+              {i > 0 ? (
+                <label style={{ display: "flex", gap: 10, alignItems: "center", fontWeight: 650, minHeight: 44 }}>
+                  <input type="checkbox" checked={isLinked(i)} onChange={(e) => setSameEvent(i, e.target.checked)} />
+                  Same event as selection {i}
+                </label>
+              ) : null}
+              <div className="stack">
+                <SportPicker
+                  id={`sport-${i}`}
+                  label="Sport (optional)"
+                  value={leg.sport}
+                  onChange={(sport) => changeSport(i, sport)}
+                  favorites={favoriteSports}
+                  quick={quickSports(values.legs.slice(0, i), favoriteSports)}
                 />
-              </Field>
+                <MarketPicker id={`market-${i}`} label="Market (optional)" value={leg.market} onChange={(market) => setLeg(i, { market })} sport={leg.sport} />
+              </div>
+              {errors[`legs.${i}.sport`] || errors[`legs.${i}.market`] ? <p className="field-error">{errors[`legs.${i}.sport`] || errors[`legs.${i}.market`]}</p> : null}
+              {isLinked(i) ? (
+                <p className="field" style={{ margin: 0 }}>
+                  <span className="label">Event</span>
+                  <strong>{leg.event || "Enter the event on the selection above"}</strong>
+                </p>
+              ) : (
+                <Field id={`event-${i}`} label="Event" error={errors[`legs.${i}.event`]}>
+                  <input
+                    id={`event-${i}`}
+                    className="input"
+                    autoComplete="off"
+                    placeholder="Arsenal v Chelsea"
+                    value={leg.event}
+                    onChange={(e) => setLeg(i, { event: e.target.value })}
+                    aria-invalid={errors[`legs.${i}.event`] ? true : undefined}
+                    aria-describedby={describe(`event-${i}`, errors[`legs.${i}.event`])}
+                  />
+                </Field>
+              )}
               <Field id={`pick-${i}`} label="Your pick" error={errors[`legs.${i}.selection`]}>
                 <input
                   id={`pick-${i}`}
@@ -313,32 +384,6 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
                   aria-describedby={describe(`pick-${i}`, errors[`legs.${i}.selection`])}
                 />
               </Field>
-              <div className="field-row">
-                <Field id={`sport-${i}`} label="Sport (optional)" error={errors[`legs.${i}.sport`]}>
-                  <input
-                    id={`sport-${i}`}
-                    className="input"
-                    autoComplete="off"
-                    placeholder="Football"
-                    value={leg.sport}
-                    onChange={(e) => setLeg(i, { sport: e.target.value })}
-                    aria-invalid={errors[`legs.${i}.sport`] ? true : undefined}
-                    aria-describedby={describe(`sport-${i}`, errors[`legs.${i}.sport`])}
-                  />
-                </Field>
-                <Field id={`market-${i}`} label="Market (optional)" error={errors[`legs.${i}.market`]}>
-                  <input
-                    id={`market-${i}`}
-                    className="input"
-                    autoComplete="off"
-                    placeholder="Match result"
-                    value={leg.market}
-                    onChange={(e) => setLeg(i, { market: e.target.value })}
-                    aria-invalid={errors[`legs.${i}.market`] ? true : undefined}
-                    aria-describedby={describe(`market-${i}`, errors[`legs.${i}.market`])}
-                  />
-                </Field>
-              </div>
               <Field id={`odds-${i}`} label="Odds (optional)" error={errors[`legs.${i}.odds`]} hint="Decimal odds, for example 1.85">
                 <input
                   id={`odds-${i}`}
@@ -374,12 +419,19 @@ export function BetForm({ mode, betId, initial, draftId }: { mode: "create" | "e
             aria-describedby={describe("total-odds", errors.totalOdds, "x")}
           />
         </Field>
+        {sameGame ? (
+          <p className="banner banner-note" style={{ marginTop: -12 }}>
+            {SAME_GAME_NOTE}
+          </p>
+        ) : null}
         {combined !== null && values.totalOdds.trim() !== String(combined) ? (
           <p className="muted num" style={{ marginTop: -12 }}>
             Your selections multiply to {combined.toFixed(2)}.{" "}
-            <button type="button" className="text-btn" onClick={() => set("totalOdds", String(combined))}>
-              Use this as total odds
-            </button>
+            {sameGame ? null : (
+              <button type="button" className="text-btn" onClick={() => set("totalOdds", String(combined))}>
+                Use this as total odds
+              </button>
+            )}
           </p>
         ) : null}
 
