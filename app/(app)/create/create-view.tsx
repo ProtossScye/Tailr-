@@ -14,7 +14,9 @@ import { MAX_LEGS } from "@/lib/client/bet-form";
 import { applyRemoval, suggestChanges, type Suggestion } from "@/lib/client/suggest";
 import { COMMON_MARKETS, checkTarget, defaultDraftName, inAvoided, legOdds, outsidePreferred, slipCombinedOdds, sportChoices } from "@/lib/client/slip";
 import { CopyIcon, EditIcon, PlusIcon, SlipArt, TrashIcon } from "@/components/icons";
+import { MarketPicker, SportPicker } from "@/components/leg-pickers";
 import { PageHeader, Segmented } from "@/components/ui";
+import { SAME_GAME_NOTE, isSameGame, marketAfterSportChange, quickSports } from "@/lib/client/leg-entry";
 
 type Mode = "build" | "adapt";
 const blank = (): DraftLeg => ({ sport: "", event: "", market: "", selection: "", odds: "" });
@@ -42,6 +44,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
   const [readCombined, setReadCombined] = useState<number | null>(null);
   const [aiAvailable, setAiAvailable] = useState(false);
   // Suggested changes. Nothing is applied until the person accepts it.
+  // "Same event as the last selection": stays on until switched off, so a run of picks from one game is quick.
+  const [sameEvent, setSameEvent] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [readError, setReadError] = useState<string | null>(null);
@@ -117,6 +121,19 @@ export function CreateView({ draftId }: { draftId?: string }) {
   };
   const rejectSuggestion = (key: string) => setDismissed((prev) => new Set([...prev, key]));
 
+  useEffect(() => {
+    if (legs.length === 0) setSameEvent(false);
+  }, [legs.length]);
+
+  const lastEvent = legs.length > 0 ? legs[legs.length - 1]!.event : "";
+  const useSameEvent = sameEvent && editing === null && lastEvent !== "";
+  const quick = useMemo(() => quickSports(legs, favoriteSports), [legs, favoriteSports]);
+
+  const changeSport = (sport: string) => {
+    setComposer((prev) => ({ ...prev, sport, market: marketAfterSportChange(prev.market, sport) }));
+    setComposerErrors((prev) => (prev.sport ? { ...prev, sport: "" } : prev));
+  };
+
   const setField = (key: keyof DraftLeg, value: string) => {
     setComposer((prev) => ({ ...prev, [key]: value }));
     setComposerErrors((prev) => (prev[key] ? { ...prev, [key]: "" } : prev));
@@ -124,7 +141,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
 
   const addSelection = () => {
     const errors: Record<string, string> = {};
-    if (composer.event.trim() === "") errors.event = "Enter the event, for example Arsenal v Chelsea.";
+    const event = useSameEvent ? lastEvent : composer.event.trim();
+    if (event === "") errors.event = "Enter the event, for example Arsenal v Chelsea.";
     if (composer.selection.trim() === "") errors.selection = "Enter your pick, for example Arsenal to win.";
     if (composer.odds.trim() !== "") {
       const odds = parseOdds(composer.odds);
@@ -136,7 +154,7 @@ export function CreateView({ draftId }: { draftId?: string }) {
     }
     const clean: DraftLeg = {
       sport: composer.sport.trim(),
-      event: composer.event.trim(),
+      event,
       market: composer.market.trim(),
       selection: composer.selection.trim(),
       odds: composer.odds.trim(),
@@ -494,44 +512,58 @@ export function CreateView({ draftId }: { draftId?: string }) {
           {editing === null ? "Add a selection" : `Edit selection ${editing + 1}`}
         </h2>
         <div className="card card-pad form">
-          <div className="field-row">
+          {legs.length > 0 && editing === null ? (
             <div className="field">
-              <label htmlFor="composer-sport">Sport</label>
-              <input id="composer-sport" className="input" list="sports" autoComplete="off" value={composer.sport} onChange={(e) => setField("sport", e.target.value)} placeholder="Football" />
-              <datalist id="sports">
-                {sportChoices(favoriteSports).map((s) => (
-                  <option key={s} value={s} />
-                ))}
-              </datalist>
+              <span className="label">This selection is</span>
+              <Segmented<"same" | "new">
+                label="Same event or a new one"
+                full
+                value={useSameEvent ? "same" : "new"}
+                onChange={(v) => {
+                  setSameEvent(v === "same");
+                  // Another pick from the same game is the same sport as that game.
+                  const lastSport = legs[legs.length - 1]?.sport ?? "";
+                  if (v === "same" && lastSport !== "") changeSport(lastSport);
+                }}
+                options={[
+                  { value: "same", label: "Same event" },
+                  { value: "new", label: "New event" },
+                ]}
+              />
+              {useSameEvent ? (
+                <span className="hint">Another pick from {lastEvent}. Change the market and pick below.</span>
+              ) : (
+                <span className="hint">A different match. The sport stays as it is unless you change it.</span>
+              )}
             </div>
+          ) : null}
+          <SportPicker id="composer-sport" value={composer.sport} onChange={changeSport} favorites={favoriteSports} quick={quick} />
+          <MarketPicker id="composer-market" value={composer.market} onChange={(market) => setField("market", market)} sport={composer.sport} />
+          {useSameEvent ? (
+            <p className="field" style={{ margin: 0 }}>
+              <span className="label">Event</span>
+              <strong>{lastEvent}</strong>
+            </p>
+          ) : (
             <div className="field">
-              <label htmlFor="composer-market">Market</label>
-              <input id="composer-market" className="input" list="markets" autoComplete="off" value={composer.market} onChange={(e) => setField("market", e.target.value)} placeholder="Match result" />
-              <datalist id="markets">
-                {COMMON_MARKETS.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
+              <label htmlFor="composer-event">Event</label>
+              <input
+                id="composer-event"
+                className="input"
+                autoComplete="off"
+                value={composer.event}
+                onChange={(e) => setField("event", e.target.value)}
+                placeholder="Arsenal v Chelsea"
+                aria-invalid={composerErrors.event ? true : undefined}
+                aria-describedby={composerErrors.event ? "composer-event-error" : undefined}
+              />
+              {composerErrors.event ? (
+                <span className="field-error" id="composer-event-error">
+                  {composerErrors.event}
+                </span>
+              ) : null}
             </div>
-          </div>
-          <div className="field">
-            <label htmlFor="composer-event">Event</label>
-            <input
-              id="composer-event"
-              className="input"
-              autoComplete="off"
-              value={composer.event}
-              onChange={(e) => setField("event", e.target.value)}
-              placeholder="Arsenal v Chelsea"
-              aria-invalid={composerErrors.event ? true : undefined}
-              aria-describedby={composerErrors.event ? "composer-event-error" : undefined}
-            />
-            {composerErrors.event ? (
-              <span className="field-error" id="composer-event-error">
-                {composerErrors.event}
-              </span>
-            ) : null}
-          </div>
+          )}
           <div className="field-row">
             <div className="field">
               <label htmlFor="composer-pick">Your pick</label>
@@ -649,6 +681,11 @@ export function CreateView({ draftId }: { draftId?: string }) {
                   <dd className="num">{combined !== null ? combined.toFixed(2) : "Not available"}</dd>
                 </div>
               </div>
+              {isSameGame(legs) ? (
+                <p className="banner banner-note" style={{ fontSize: 13 }}>
+                  {SAME_GAME_NOTE}
+                </p>
+              ) : null}
               {combined === null ? (
                 <p className="muted">
                   {missingOdds > 0
