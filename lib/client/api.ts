@@ -34,15 +34,10 @@ function signInUrl(): string {
   return `/sign-in?next=${encodeURIComponent(here)}`;
 }
 
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+async function send<T>(path: string, init: RequestInit): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(path, {
-      method: init.method ?? "GET",
-      headers: init.body === undefined ? undefined : { "content-type": "application/json" },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      cache: "no-store",
-    });
+    response = await fetch(path, { ...init, cache: "no-store" });
   } catch {
     throw new ApiError(0, "network", FRIENDLY.network);
   }
@@ -67,11 +62,24 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   if (response.status === 400 && error) {
     throw new ApiError(400, error.code, error.message, error.issues ?? []);
   }
-  if ((response.status === 429 || response.status === 502 || response.status === 503) && error) {
+  if ((response.status === 413 || response.status === 429 || response.status === 502 || response.status === 503) && error) {
     throw new ApiError(response.status, error.code, error.message);
   }
   if (response.status === 404) throw new ApiError(404, "not_found", "We could not find that. It may have been deleted.");
   throw new ApiError(response.status, "server_error", FRIENDLY.server);
+}
+
+export function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  return send<T>(path, {
+    method: init.method ?? "GET",
+    headers: init.body === undefined ? undefined : { "content-type": "application/json" },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+}
+
+/** Sends a file. The browser sets the multipart Content-Type (with its boundary) itself. */
+export function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  return send<T>(path, { method: "POST", body: form });
 }
 
 /** Every bet, newest placed first, fetched page by page. */

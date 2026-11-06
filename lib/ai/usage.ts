@@ -3,11 +3,12 @@ import { RepositoryError } from "../services/errors";
 import type { AiFailureKind } from "./types";
 
 export type AiCallStatus = "ok" | AiFailureKind;
+export type AiPurpose = "read_slip" | "read_image";
 
 /** The per-person usage log and limit. Holds sizes, model and token counts only, never text or answers. */
 export interface AiUsageRepository {
   /** An id for the call, or null when the person has reached their limit. */
-  begin(purpose: "read_slip", inputChars: number): Promise<string | null>;
+  begin(purpose: AiPurpose, inputChars: number): Promise<string | null>;
   finish(id: string, result: { status: AiCallStatus; model: string | null; inputTokens: number | null; outputTokens: number | null; latencyMs: number }): Promise<void>;
 }
 

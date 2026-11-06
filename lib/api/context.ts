@@ -44,5 +44,5 @@ export async function getAiDeps(): Promise<ReadSlipAiDeps | null> {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) return null;
-  return { provider: createProviderFromEnv(), usage: createSupabaseAiUsageRepository(supabase), timeoutMs: timeoutFromEnv() };
+  return { provider: createProviderFromEnv(), usage: createSupabaseAiUsageRepository(supabase), timeoutMs: timeoutFromEnv(), imageTimeoutMs: Math.max(timeoutFromEnv(), 30_000) };
 }

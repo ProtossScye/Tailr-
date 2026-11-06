@@ -13,6 +13,15 @@ export interface AnthropicOptions {
  * structured JSON rather than prose. Runs on the server only: the key never reaches the browser.
  * Error messages carry a status number at most, never the key, the request or the response body.
  */
+/** Plain text, or the images followed by the instruction text when images are attached. */
+function userContent(request: AiToolRequest) {
+  if (!request.images || request.images.length === 0) return request.user;
+  return [
+    ...request.images.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mediaType, data: image.data } })),
+    { type: "text", text: request.user },
+  ];
+}
+
 export function createAnthropicProvider({ apiKey, model, fetchImpl = fetch, baseUrl = "https://api.anthropic.com" }: AnthropicOptions): AiProvider {
   return {
     async callTool(request: AiToolRequest): Promise<AiToolResult> {
@@ -25,7 +34,7 @@ export function createAnthropicProvider({ apiKey, model, fetchImpl = fetch, base
             model,
             max_tokens: request.maxTokens,
             system: request.system,
-            messages: [{ role: "user", content: request.user }],
+            messages: [{ role: "user", content: userContent(request) }],
             tools: [{ name: request.toolName, description: request.toolDescription, input_schema: request.inputSchema }],
             tool_choice: { type: "tool", name: request.toolName },
           }),

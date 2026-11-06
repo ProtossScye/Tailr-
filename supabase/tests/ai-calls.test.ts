@@ -81,6 +81,15 @@ describe("begin_ai_call", () => {
     expect(await rowsOf(u)).toEqual([]);
   });
 
+  it("accepts the image purpose, and image and text reads share one limit", async () => {
+    const u = await newUser(db);
+    for (let i = 0; i < 5; i++) expect(await begin(u, 100, "read_image")).toBeTruthy();
+    for (let i = 0; i < 5; i++) expect(await begin(u, 100, "read_slip")).toBeTruthy();
+    expect(await begin(u, 100, "read_image")).toBeNull();
+    expect(await begin(u, 100, "read_slip")).toBeNull();
+    expect((await rowsOf(u)).filter((r) => r.purpose === "read_image")).toHaveLength(5);
+  });
+
   it("treats a negative size as zero", async () => {
     const u = await newUser(db);
     await begin(u, -5);

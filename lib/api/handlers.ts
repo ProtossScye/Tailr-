@@ -27,8 +27,11 @@ import {
 } from "../services";
 import type { BetStatus, Currency } from "../accounting";
 import { readSlipWithAi, type ReadSlipAiDeps } from "../ai/read-slip";
+import { MAX_IMAGE_BYTES } from "../ai/image";
+import { readSlipImage } from "../ai/read-image";
+import { readBodyLimited } from "./body";
 import { AiFailedError, AiRateLimitedError, AiUnavailableError } from "../ai/types";
-import type { ApiErrorBody, AiStatusJson } from "./types";
+import type { ApiErrorBody, AiStatusJson, ImageReadJson } from "./types";
 
 /**
  * Route logic as plain `(deps, Request) => Response` functions, so it can be tested without a
@@ -241,4 +244,34 @@ export function handleReadSlipWithAi(deps: AiDeps, request: Request): Promise<Re
 /** Whether AI reading is switched on, so the page only offers it when it can work. */
 export function handleAiStatus(deps: AiDeps): Promise<Response> {
   return run(deps, async (d) => json({ data: { available: d.provider !== null } satisfies AiStatusJson }));
+}
+
+/** Room for the multipart wrapping around the image itself. */
+const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+
+/**
+ * Reads a screenshot of a slip. Multipart upload with one field, `image` (JPEG, PNG or WebP, up to
+ * 3 MB; the app shrinks screenshots before sending). The size is enforced while reading, the type
+ * from the file's own bytes. The image is read in memory and is never stored or logged.
+ */
+export function handleReadSlipImage(deps: AiDeps, request: Request): Promise<Response> {
+  return run(deps, async (d) => {
+    if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("multipart/form-data")) {
+      return fail(400, "invalid_upload", "Send the image as a form upload with a field named image.");
+    }
+    const bytes = await readBodyLimited(request, MAX_IMAGE_BYTES + MULTIPART_OVERHEAD_BYTES);
+    if (bytes === null) return fail(413, "too_large", "That image is too large. Try a smaller screenshot.");
+
+    let form: FormData;
+    try {
+      form = await new Response(bytes as Uint8Array<ArrayBuffer>, { headers: { "content-type": request.headers.get("content-type") ?? "" } }).formData();
+    } catch {
+      return fail(400, "invalid_upload", "That upload could not be read.");
+    }
+    const file = form.get("image");
+    if (typeof file === "string" || file === null) return fail(400, "invalid_upload", "Add an image in a field named image.");
+
+    const result = await readSlipImage(d, { bytes: new Uint8Array(await file.arrayBuffer()) });
+    return json({ data: result satisfies ImageReadJson });
+  });
 }
