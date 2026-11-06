@@ -14,6 +14,16 @@ export interface AiToolRequest {
   inputSchema: Record<string, unknown>;
   maxTokens: number;
   signal: AbortSignal;
+  /** Images the model should look at, sent with the user turn. Treated as data, never as instructions. */
+  images?: readonly AiImage[];
+}
+
+export type AiImageType = "image/jpeg" | "image/png" | "image/webp";
+
+export interface AiImage {
+  mediaType: AiImageType;
+  /** Base64, no data: prefix. */
+  data: string;
 }
 
 export interface AiToolResult {

@@ -2,8 +2,8 @@
  * Reading a pasted slip. The server reads the text and returns a draft to review; nothing is saved
  * and nothing is looked up. A selection only becomes part of the slip when the person adds it.
  */
-import type { AiStatusJson, ParsedSlipJson } from "@/lib/api/types";
-import { api } from "./api";
+import type { AiStatusJson, ImageReadJson, ParsedSlipJson } from "@/lib/api/types";
+import { api, apiUpload } from "./api";
 import type { DraftLeg } from "./drafts";
 import { oddsText } from "./slips";
 
@@ -15,6 +15,13 @@ export const parsePastedText = (text: string) => api<ParsedSlipJson>("/api/slips
 
 /** The same reading, done by AI and then checked against the text on the server. */
 export const readWithAi = (text: string) => api<ParsedSlipJson>("/api/slips/parse-ai", { method: "POST", body: { text } });
+
+/** Sends a prepared screenshot. The AI copies out its text, and the text reader reads that text. */
+export function readScreenshot(image: Blob): Promise<ImageReadJson> {
+  const form = new FormData();
+  form.set("image", image, "slip.jpg");
+  return apiUpload<ImageReadJson>("/api/slips/parse-image", form);
+}
 
 export const fetchAiStatus = () => api<AiStatusJson>("/api/ai/status");
 

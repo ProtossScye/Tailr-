@@ -15,6 +15,7 @@ import { applyRemoval, suggestChanges, type Suggestion } from "@/lib/client/sugg
 import { COMMON_MARKETS, checkTarget, defaultDraftName, inAvoided, legOdds, outsidePreferred, slipCombinedOdds, sportChoices } from "@/lib/client/slip";
 import { CopyIcon, EditIcon, PlusIcon, SlipArt, TrashIcon } from "@/components/icons";
 import { MarketPicker, SportPicker } from "@/components/leg-pickers";
+import { ScreenshotReader } from "@/components/screenshot-reader";
 import { PageHeader, Segmented } from "@/components/ui";
 import { SAME_GAME_NOTE, isSameGame, marketAfterSportChange, quickSports } from "@/lib/client/leg-entry";
 
@@ -43,6 +44,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
   // Worked out when the text is read, so it stays put as selections are added to the slip.
   const [readCombined, setReadCombined] = useState<number | null>(null);
   const [aiAvailable, setAiAvailable] = useState(false);
+  // The screenshot the current review came from, shown beside it so each line can be checked.
+  const [shotUrl, setShotUrl] = useState<string | null>(null);
   // Suggested changes. Nothing is applied until the person accepts it.
   // "Same event as the last selection": stays on until switched off, so a run of picks from one game is quick.
   const [sameEvent, setSameEvent] = useState(false);
@@ -364,8 +367,34 @@ export function CreateView({ draftId }: { draftId?: string }) {
           <h2 className="section-title" id="paste-title">
             Your slip
           </h2>
+          <ScreenshotReader
+            available={aiAvailable}
+            busy={reading}
+            onStart={() => {
+              setReading(true);
+              setReadError(null);
+              setReview(null);
+            }}
+            onResult={(result, url) => {
+              if (result.text !== "") setPasted(result.text);
+              setFoundCount(result.slip.selections.length);
+              setReadCombined(combinedFromRead(result.slip.selections));
+              setReview(result.slip);
+              setShotUrl(url);
+              setReading(false);
+            }}
+            onError={(message) => {
+              setReadError(message);
+              setReading(false);
+            }}
+            onClear={() => {
+              setShotUrl(null);
+              setReview(null);
+              setReadError(null);
+            }}
+          />
           <div className="field">
-            <label htmlFor="pasted">Paste the slip text</label>
+            <label htmlFor="pasted">Or paste the slip text</label>
             <textarea
               id="pasted"
               className="textarea"
@@ -376,8 +405,8 @@ export function CreateView({ draftId }: { draftId?: string }) {
               style={{ minHeight: 120 }}
             />
             <span className="hint">
-              Tailr reads the text and nothing else. It does not look up fixtures or odds, and it does not guess what is missing. Screenshots are not
-              supported yet. The text is not saved.
+              Tailr reads the text and nothing else. It does not look up fixtures or odds, and it does not guess what is missing. The text is not saved.
+              Text from a screenshot lands here so you can fix it and read it again.
             </span>
           </div>
           <div className="btn-row">
@@ -404,6 +433,13 @@ export function CreateView({ draftId }: { draftId?: string }) {
           {review ? (
             <div className="card card-pad stack" aria-live="polite">
               <h3 style={{ fontSize: 16 }}>What Tailr read</h3>
+              {shotUrl ? (
+                <details>
+                  <summary style={{ minHeight: 44, display: "flex", alignItems: "center", fontWeight: 650 }}>Your screenshot, to check against</summary>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={shotUrl} alt="Your screenshot of the slip" style={{ width: "100%", borderRadius: 12, border: "1px solid var(--line)" }} />
+                </details>
+              ) : null}
               <p className="muted" style={{ fontSize: 13 }}>
                 This is a draft to check against your slip, not a placed bet. Anything marked needs your attention.
               </p>
