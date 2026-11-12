@@ -143,6 +143,7 @@ describe("empty and zero-denominator cases", () => {
       wins: 0,
       losses: 0,
       voids: 0,
+      placedCount: 0,
       pendingCount: 0,
       pendingStakeMinor: 0,
     });
@@ -354,5 +355,54 @@ describe("purity", () => {
     expect(s.settledStakeMinor).toBe(1_000_000_000);
     expect(s.roiPercent).toBe(25);
     expect(s.winRatePercent).toBe(50);
+  });
+});
+
+describe("bets placed (counted by placement date)", () => {
+  const range: DateRange = { start: T("2026-10-10T00:00:00.000Z"), end: T("2026-10-11T00:00:00.000Z") };
+  const placed = (iso: string, extra: Partial<Bet> & Pick<Bet, "status" | "stakeMinor">) => bet({ placedAt: T(iso), ...extra });
+
+  it("counts every status, because a bet was placed whether or not it has settled", () => {
+    const s = summarize(
+      [
+        placed("2026-10-10T08:00:00Z", { status: "pending", stakeMinor: 1_000 }),
+        placed("2026-10-10T09:00:00Z", { status: "won", stakeMinor: 1_000, grossReturnMinor: 3_000, settledAt: T("2026-10-20T00:00:00Z") }),
+        placed("2026-10-10T10:00:00Z", { status: "lost", stakeMinor: 1_000, settledAt: T("2026-10-20T00:00:00Z") }),
+        placed("2026-10-10T11:00:00Z", { status: "void", stakeMinor: 1_000, settledAt: T("2026-10-20T00:00:00Z") }),
+      ],
+      range,
+      "NGN",
+    );
+    expect(s.placedCount).toBe(4);
+    // None of them settled inside the range, so the settlement-based figures stay empty.
+    expect(s.wins + s.losses + s.voids).toBe(0);
+  });
+
+  it("uses a half-open range on the placement time", () => {
+    const at = (iso: string) => summarize([placed(iso, { status: "pending", stakeMinor: 1_000 })], range, "NGN").placedCount;
+    expect(at("2026-10-10T00:00:00.000Z")).toBe(1);
+    expect(at("2026-10-10T23:59:59.999Z")).toBe(1);
+    expect(at("2026-10-11T00:00:00.000Z")).toBe(0);
+    expect(at("2026-10-09T23:59:59.999Z")).toBe(0);
+  });
+
+  it("does not count a pending bet placed outside the range, although pending bets are still reported", () => {
+    const s = summarize([placed("2026-09-01T08:00:00Z", { status: "pending", stakeMinor: 1_000 })], range, "NGN");
+    expect(s.placedCount).toBe(0);
+    expect(s.pendingCount).toBe(1);
+  });
+
+  it("counts per currency and never mixes them", () => {
+    const all = [
+      placed("2026-10-10T08:00:00Z", { status: "pending", stakeMinor: 1_000 }),
+      placed("2026-10-10T08:00:00Z", { status: "pending", stakeMinor: 1_000, currency: "USD" }),
+      placed("2026-10-10T09:00:00Z", { status: "pending", stakeMinor: 1_000, currency: "USD" }),
+    ];
+    expect(summarize(all, range, "NGN").placedCount).toBe(1);
+    expect(summarize(all, range, "USD").placedCount).toBe(2);
+  });
+
+  it("is zero for no bets", () => {
+    expect(summarize([], range, "NGN").placedCount).toBe(0);
   });
 });

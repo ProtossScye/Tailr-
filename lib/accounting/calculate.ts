@@ -79,6 +79,7 @@ function assertSafeTotal(value: number, label: string): void {
  *
  * - Won/lost bets count by settledAt falling inside the range.
  * - Void bets are counted but excluded from stake, ROI and win rate.
+ * - `placedCount` is the one figure filtered by placement date (any status).
  * - Pending bets are never in P/L or ROI. They are reported separately and are
  *   NOT filtered by the range (they have no settlement date yet).
  * - ROI and win rate are null (not NaN) when their denominator is 0.
@@ -101,10 +102,15 @@ export function summarize(bets: readonly Bet[], range: DateRange, currency: Curr
   let voids = 0;
   let pendingCount = 0;
   let pendingStake = 0;
+  let placedCount = 0;
 
   for (const bet of bets) {
     assertValidBet(bet);
     if (bet.currency !== currency) continue;
+
+    // Placed bets are counted by when they were placed, so a bet still pending is included.
+    const placed = bet.placedAt.getTime();
+    if (placed >= start && placed < end) placedCount += 1;
 
     if (bet.status === "pending") {
       pendingCount += 1;
@@ -139,6 +145,7 @@ export function summarize(bets: readonly Bet[], range: DateRange, currency: Curr
     wins,
     losses,
     voids,
+    placedCount,
     pendingCount,
     pendingStakeMinor: pendingStake,
   };

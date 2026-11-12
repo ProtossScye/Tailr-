@@ -16,6 +16,7 @@ import {
   listSlips,
   readSlipText,
   savePreferences,
+  reopenBet,
   settleBet,
   updateBet,
   updateSlip,
@@ -143,6 +144,11 @@ export function handleUpdateBet(deps: Deps, request: Request, id: string): Promi
 
 export function handleSettleBet(deps: Deps, request: Request, id: string): Promise<Response> {
   return withBody(deps, request, async (d, body) => json({ data: await settleBet(d, id, body as Body<Parameters<typeof settleBet>[2]>) }));
+}
+
+/** Takes a settled bet back to pending. No body. */
+export function handleReopenBet(deps: Deps, id: string): Promise<Response> {
+  return run(deps, async (d) => json({ data: await reopenBet(d, id) }));
 }
 
 export function handleDeleteBet(deps: Deps, id: string): Promise<Response> {

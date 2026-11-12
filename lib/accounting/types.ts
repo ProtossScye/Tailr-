@@ -49,6 +49,8 @@ export interface Summary {
   losses: number;
   /** Voids settled in range. Counted for display only; excluded from ROI and win rate. */
   voids: number;
+  /** Bets in this currency placed inside the range, whatever their status. Counted by placement date. */
+  placedCount: number;
   /** All currently pending bets in this currency. Not filtered by date range. */
   pendingCount: number;
   pendingStakeMinor: number;

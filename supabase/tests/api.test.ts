@@ -6,6 +6,7 @@ import {
   handleDeleteBet,
   handleGetBet,
   handleListBets,
+  handleReopenBet,
   handleSettleBet,
   handleUpdateBet,
   type Deps,
@@ -65,6 +66,7 @@ describe("signed-out visitors", () => {
       handleGetBet(null, MISSING_ID),
       handleUpdateBet(null, req("PATCH", "/x", { notes: "a" }), MISSING_ID),
       handleSettleBet(null, req("POST", "/x", { outcome: "lost" }), MISSING_ID),
+      handleReopenBet(null, MISSING_ID),
       handleDeleteBet(null, MISSING_ID),
       handleDashboard(null, req("GET", "/dashboard")),
     ]);
@@ -185,6 +187,19 @@ describe("update, settle, delete", () => {
     expect(JSON.stringify(await exact.json())).toMatch(/void/i);
   });
 
+  it("re-opens a settled bet to pending, and it can be settled again", async () => {
+    const deps = await freshUser();
+    const { json } = await create(deps);
+    const id = json.data.id;
+    await handleSettleBet(deps, req("POST", `/bets/${id}/settle`, { outcome: "won", grossReturnMinor: 900000 }), id);
+    const reopened = await handleReopenBet(deps, id);
+    expect(reopened.status).toBe(200);
+    expect(reopened.headers.get("cache-control")).toMatch(/no-store/);
+    expect(((await reopened.json()) as any).data).toMatchObject({ id, status: "pending", settledAt: null, grossReturnMinor: null, netProfitMinor: null });
+    const again = await handleSettleBet(deps, req("POST", `/bets/${id}/settle`, { outcome: "lost" }), id);
+    expect(((await again.json()) as any).data).toMatchObject({ status: "lost" });
+  });
+
   it("cannot change the result through PATCH", async () => {
     const deps = await freshUser();
     const { json } = await create(deps);
@@ -211,6 +226,7 @@ describe("update, settle, delete", () => {
       expect((await handleGetBet(deps, id)).status, id).toBe(404);
       expect((await handleUpdateBet(deps, req("PATCH", "/x", { notes: "a" }), id)).status).toBe(404);
       expect((await handleSettleBet(deps, req("POST", "/x", { outcome: "lost" }), id)).status).toBe(404);
+      expect((await handleReopenBet(deps, id)).status).toBe(404);
     }
   });
 });
@@ -230,6 +246,11 @@ describe("privacy between users", () => {
     expect((await handleUpdateBet(bob, req("PATCH", "/x", { notes: "hacked" }), id)).status).toBe(404);
     expect((await handleSettleBet(bob, req("POST", "/x", { outcome: "lost" }), id)).status).toBe(404);
     expect((await handleDeleteBet(bob, id)).status).toBe(404);
+
+    await handleSettleBet(alice, req("POST", "/x", { outcome: "lost" }), id);
+    expect((await handleReopenBet(bob, id)).status).toBe(404);
+    expect(((await (await handleGetBet(alice, id)).json()) as any).data.status).toBe("lost");
+    await handleReopenBet(alice, id);
 
     expect(((await (await handleListBets(bob, req("GET", "/bets"))).json()) as any).data.items).toHaveLength(0);
     const still = ((await (await handleGetBet(alice, id)).json()) as any).data;

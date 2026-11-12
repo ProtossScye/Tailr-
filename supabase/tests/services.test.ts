@@ -8,6 +8,7 @@ import {
   getDashboardStats,
   listBets,
   NotFoundError,
+  reopenBet,
   settleBet,
   updateBet,
   ValidationError,
@@ -533,5 +534,69 @@ describe("getDashboardStats", () => {
     const day = lagosDayRange("2026-10-30");
     await expect(getDashboardStats(deps, { range: { start: day.end, end: day.start } })).rejects.toThrow(ValidationError);
     await expect(getDashboardStats(deps, { range: { start: new Date("nope"), end: day.end } })).rejects.toThrow(ValidationError);
+  });
+});
+
+describe("reopenBet", () => {
+  it("takes a settled bet back to pending: no settlement date, no return, no profit", async () => {
+    const { deps } = await freshUser();
+    for (const result of [{ outcome: "won", grossReturnMinor: 900000 }, { outcome: "lost" }, { outcome: "void" }] as const) {
+      const bet = await createBet(deps, betInput({ stakeMinor: 500000 }));
+      await settleBet(deps, bet.id, result);
+      const reopened = await reopenBet(deps, bet.id);
+      expect(reopened).toMatchObject({ id: bet.id, status: "pending", settledAt: null, grossReturnMinor: null, netProfitMinor: null, stakeMinor: 500000 });
+      expect(await getBet(deps, bet.id)).toMatchObject({ status: "pending", settledAt: null, grossReturnMinor: null });
+    }
+  });
+
+  it("keeps everything else about the bet", async () => {
+    const { deps } = await freshUser();
+    const bet = await createBet(deps, betInput({ stakeMinor: 500000, notes: "banker" }));
+    await settleBet(deps, bet.id, { outcome: "lost" });
+    const reopened = await reopenBet(deps, bet.id);
+    expect(reopened.notes).toBe("banker");
+    expect(reopened.placedAt).toEqual(bet.placedAt);
+    expect(reopened.selections).toEqual(bet.selections);
+  });
+
+  it("moves the bet out of the settled figures and back into pending", async () => {
+    const { deps } = await freshUser();
+    const bet = await createBet(deps, betInput({ stakeMinor: 500000 }));
+    await settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 900000 });
+    expect((await getDashboardStats(deps)).byCurrency.NGN).toMatchObject({ wins: 1, netProfitMinor: 400000, pendingCount: 0 });
+    await reopenBet(deps, bet.id);
+    expect((await getDashboardStats(deps)).byCurrency.NGN).toMatchObject({ wins: 0, netProfitMinor: 0, settledStakeMinor: 0, pendingCount: 1, pendingStakeMinor: 500000 });
+  });
+
+  it("can be settled again afterwards", async () => {
+    const { deps } = await freshUser();
+    const bet = await createBet(deps, betInput({ stakeMinor: 500000 }));
+    await settleBet(deps, bet.id, { outcome: "lost" });
+    await reopenBet(deps, bet.id);
+    expect(await settleBet(deps, bet.id, { outcome: "won", grossReturnMinor: 1_000_000 })).toMatchObject({ status: "won", netProfitMinor: 500000 });
+  });
+
+  it("leaves a bet that is already pending as it is", async () => {
+    const { deps } = await freshUser();
+    const bet = await createBet(deps, betInput());
+    expect(await reopenBet(deps, bet.id)).toMatchObject({ id: bet.id, status: "pending", settledAt: null });
+  });
+
+  it("is not found if the bet disappears between reading and saving", async () => {
+    const { deps } = await freshUser();
+    const bet = await createBet(deps, betInput());
+    await settleBet(deps, bet.id, { outcome: "lost" });
+    const racing: ServiceDeps = { ...deps, repo: { ...deps.repo, updateBet: async () => false } };
+    await expect(reopenBet(racing, bet.id)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("is not found for a missing id, a malformed id, or another user's bet, and changes nothing", async () => {
+    const alice = await freshUser();
+    const bob = await freshUser();
+    const bet = await createBet(alice.deps, betInput());
+    await settleBet(alice.deps, bet.id, { outcome: "lost" });
+    for (const id of [MISSING_ID, "abc"]) await expect(reopenBet(alice.deps, id)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(reopenBet(bob.deps, bet.id)).rejects.toBeInstanceOf(NotFoundError);
+    expect(await getBet(alice.deps, bet.id)).toMatchObject({ status: "lost" });
   });
 });
