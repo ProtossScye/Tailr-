@@ -19,6 +19,7 @@ export function BetDetail({ id, saved }: { id: string; saved?: "created" | "upda
     state: "loading",
   });
   const [settling, setSettling] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(saved === "created" ? "Bet saved as pending." : saved === "updated" ? "Changes saved." : null);
 
@@ -166,6 +167,11 @@ export function BetDetail({ id, saved }: { id: string; saved?: "created" | "upda
         <button type="button" className="btn btn-primary" onClick={() => setSettling(true)}>
           {bet.status === "pending" ? "Settle bet" : "Change result"}
         </button>
+        {bet.status !== "pending" ? (
+          <button type="button" className="btn" onClick={() => setReopening(true)}>
+            Back to pending
+          </button>
+        ) : null}
         <Link href={`/bets/${bet.id}/edit`} className="btn">
           <EditIcon /> Edit
         </Link>
@@ -182,6 +188,17 @@ export function BetDetail({ id, saved }: { id: string; saved?: "created" | "upda
             setState({ state: "ready", bet: next });
             setSettling(false);
             setNotice("Result saved.");
+          }}
+        />
+      ) : null}
+      {reopening ? (
+        <ReopenSheet
+          bet={bet}
+          onClose={() => setReopening(false)}
+          onDone={(next) => {
+            setState({ state: "ready", bet: next });
+            setReopening(false);
+            setNotice("Back to pending.");
           }}
         />
       ) : null}
@@ -318,6 +335,43 @@ function SettleSheet({ bet, onClose, onDone }: { bet: BetJson; onClose: () => vo
         </button>
         <button type="button" className="btn" onClick={onClose} disabled={saving}>
           Cancel
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function ReopenSheet({ bet, onClose, onDone }: { bet: BetJson; onClose: () => void; onDone: (bet: BetJson) => void }) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reopen = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      onDone(await api<BetJson>(`/api/bets/${bet.id}/reopen`, { method: "POST" }));
+    } catch (e) {
+      setError(messageFor(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Sheet title="Back to pending?" onClose={onClose}>
+      <p>
+        This clears the result{bet.grossReturnMinor !== null ? ` and the ${formatMoney(bet.grossReturnMinor, bet.currency)} return` : ""}, and takes the bet out of your profit, ROI and win rate until you settle it again. Nothing else about the bet changes.
+      </p>
+      {error ? (
+        <p className="banner banner-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="btn-row">
+        <button type="button" className="btn btn-primary" onClick={reopen} disabled={busy}>
+          {busy ? "Saving" : "Make it pending"}
+        </button>
+        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+          Keep the result
         </button>
       </div>
     </Sheet>

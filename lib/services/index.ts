@@ -1,4 +1,4 @@
-export { ALL_TIME, createBet, deleteBet, getBet, getDashboardStats, listBets, settleBet, updateBet } from "./bets";
+export { ALL_TIME, createBet, deleteBet, getBet, getDashboardStats, listBets, reopenBet, settleBet, updateBet } from "./bets";
 export type { ServiceDeps } from "./bets";
 export { createSlip, deleteSlip, getSlip, listSlips, updateSlip } from "./slips";
 export type { SlipServiceDeps } from "./slips";

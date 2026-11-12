@@ -166,6 +166,18 @@ export async function settleBet(deps: ServiceDeps, id: string, input: SettleBetI
   return getBet(deps, id);
 }
 
+/**
+ * Takes a settled bet back to pending: clears the settlement time and the return, keeps
+ * everything else. A bet that is already pending is returned as it is.
+ */
+export async function reopenBet(deps: ServiceDeps, id: string): Promise<BetView> {
+  const existing = toBetView(await loadOrThrow(deps, id));
+  if (existing.status === "pending") return existing;
+  const updated = await deps.repo.updateBet(id, { status: "pending", settled_at: null, gross_return_minor: null });
+  if (!updated) throw new NotFoundError();
+  return getBet(deps, id);
+}
+
 /** Deletes the bet and its legs. */
 export async function deleteBet(deps: ServiceDeps, id: string): Promise<void> {
   if (!isUuid(id)) throw new NotFoundError();

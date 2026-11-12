@@ -263,6 +263,9 @@ function Overview({
           </div>
         </div>
 
+        <p className="muted num" style={{ fontSize: 13 }}>
+          {summary.placedCount} {summary.placedCount === 1 ? "bet" : "bets"} placed {filter === "all" ? "in total" : "in this period"}, counted by the day you placed them.
+        </p>
         {summary.pendingCount > 0 ? (
           <p className="banner num">
             {summary.pendingCount} pending {summary.pendingCount === 1 ? "bet" : "bets"} with {formatMoney(summary.pendingStakeMinor, currency)} staked.

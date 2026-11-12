@@ -57,6 +57,10 @@ Last updated: 2026-11-04 (frontend merged; slip tables, slip API, preferences an
   - Written test-first: 40+ pasted-slip fixtures (including chatter, hidden instructions, ambiguous and oversized input), "nothing is invented" checks, a 500-case fuzz test, a backtracking speed check, and a round trip with the Create page's own "Copy slip text". Break-tested: 13 deliberate mutations, all caught.
   - `POST /api/slips/parse` `{ text }` (signed-in only, up to 10,000 characters): returns the draft. Saves nothing, does not keep or log the text, touches no stored data (a test fails if the repository is touched).
   - Create (Adapt a slip): Read selections, then a review list. Complete selections are added to the slip in one click; incomplete ones can be filled in by hand; unused lines are shown. Nothing is added until the person clicks. Screenshots are not supported yet.
+- **Step 14: small tracker gaps** (no database change):
+  - Home shows "N bets placed in this period", counted by placement date and including bets that are still pending. The engine's `placedCount` is the one figure filtered by placement date; profit, ROI and win rate still go by settlement date.
+  - A settled bet can go back to pending: `POST /api/bets/{id}/reopen` (no body) clears the settlement time and the return, keeps everything else, and leaves an already pending bet as it is. Another user's or a missing bet is a 404. On the bet page, "Back to pending" opens a confirm sheet first.
+  - 20 new tests (engine boundaries, real-SQL service and API tests including another user's bet). Break-tested; one survivor (a bet deleted between read and save) got its own test. The two screens were type-checked and built but not clicked through in a browser.
 - **Same-game-multi and parser fixes** (text parser, no database change):
   - "Same Game Multi / Parlay / SGM / SGP" labels are recognised and removed from the event name; a bare player pick under the match is kept (medium confidence, odds missing) only inside a same game multi, and chatter or long lines are still set aside.
   - A same game multi's total is not checked against the product of its legs (the same applies whenever all legs are the same event). Different events with a wrong total still warn.
@@ -121,7 +125,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8 to 13 are done. Next: **step 14** small tracker gaps, **step 15** Telegram, **step 16** private beta. Hosting for live testing comes first. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
+Phase two, in order: steps 8 to 14 are done. Next: **step 15** Telegram, **step 16** private beta. Hosting for live testing comes first. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
 
 Older notes:
 
@@ -137,8 +141,6 @@ Do not start the slip parser or any AI work until the tracker works end to end.
 
 ## Not built yet
 
-- "Bets placed" counts by placement date (the data model mentions it; the engine only filters by settlement date).
-- Re-opening a settled bet back to pending (a settled bet can be re-settled as won, lost or void, but not made pending again).
 
 ## How to change the database
 
