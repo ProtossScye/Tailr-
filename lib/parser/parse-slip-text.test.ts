@@ -243,6 +243,127 @@ const FIXTURES: Fixture[] = [
     text: "Saint-Etienne vs Lyon - Lyon to win @1.60",
     selections: [win("Saint-Etienne vs Lyon", "Lyon to win", 1.6)],
   },
+  {
+    name: "same game multi: label stripped from the event, same-event legs, combined price is the total",
+    text: "Same Game Multi - Arsenal vs Chelsea\nArsenal to win @1.50\nOver 2.5 goals @1.80\nBoth teams to score @1.70\nCombined odds @ 4.50",
+    selections: [
+      win("Arsenal vs Chelsea", "Arsenal to win", 1.5, { confidence: "medium" }),
+      win("Arsenal vs Chelsea", "Over 2.5 goals", 1.8, { confidence: "medium" }),
+      win("Arsenal vs Chelsea", "Both teams to score", 1.7, { confidence: "medium", market: "Both teams to score" }),
+    ],
+    totalOdds: 4.5,
+    noWarnings: [/do not match/i],
+  },
+  {
+    name: "SGM abbreviation with a colon and an odds line named after the label",
+    text: "SGM: Lakers vs Celtics\nLakers to win @1.60\nOver 215.5 points @1.90\nSame game multi odds: 2.70",
+    selections: [
+      win("Lakers vs Celtics", "Lakers to win", 1.6, { confidence: "medium" }),
+      win("Lakers vs Celtics", "Over 215.5 points", 1.9, { confidence: "medium" }),
+    ],
+    totalOdds: 2.7,
+    noWarnings: [/do not match/i],
+    ignored: [],
+  },
+  {
+    name: "same game parlay label on its own line, with a bare player pick under the match",
+    text: "Same Game Parlay\nArsenal vs Chelsea\nSaka anytime scorer\nOver 2.5 goals @1.80",
+    selections: [
+      { event: "Arsenal vs Chelsea", selection: "Saka anytime scorer", odds: null, confidence: "medium", missing: ["odds"] },
+      { event: "Arsenal vs Chelsea", selection: "Over 2.5 goals", odds: 1.8 },
+    ],
+  },
+  {
+    name: "a bare line under a match is not taken as a pick when it is not a same game multi",
+    text: "Arsenal vs Chelsea\nGood luck everyone",
+    selections: [{ event: "Arsenal vs Chelsea", selection: null, confidence: "low" }],
+    ignored: ["Good luck everyone"],
+  },
+  {
+    name: "chatter in a same game multi is still set aside",
+    text: "SGM Arsenal vs Chelsea\nArsenal to win @1.50\nGood luck everyone!",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5, { confidence: "medium" })],
+    ignored: ["Good luck everyone!"],
+  },
+  {
+    name: "different events with a wrong total still get the mismatch warning",
+    text: "Arsenal vs Chelsea - Arsenal to win @1.50\nLakers vs Celtics - Lakers to win @2.00\nTotal odds 9.00",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5), win("Lakers vs Celtics", "Lakers to win", 2)],
+    totalOdds: 9,
+    warnings: [/do not match/i],
+  },
+  {
+    name: "odds written before the match",
+    text: "1.50 Arsenal vs Chelsea - Arsenal to win",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5)],
+    warnings: [/start of a line/i],
+  },
+  {
+    name: "a time at the start of a line is not odds when there is no pick",
+    text: "12.30 Arsenal vs Chelsea",
+    selections: [{ event: "12.30 Arsenal vs Chelsea", selection: null, odds: null, confidence: "low" }],
+    noWarnings: [/start of a line/i],
+  },
+  {
+    name: "a time with pm at the start of a line is not odds",
+    text: "3.30 pm Arsenal vs Chelsea - Arsenal to win",
+    selections: [{ event: "3.30 pm Arsenal vs Chelsea", selection: "Arsenal to win", odds: null }],
+  },
+  {
+    name: "Both teams to score is a pick, not a market with nothing picked",
+    text: "Arsenal vs Chelsea - Both teams to score @1.80",
+    selections: [win("Arsenal vs Chelsea", "Both teams to score", 1.8, { market: "Both teams to score" })],
+  },
+  {
+    name: "a same game multi label alone is enough to skip the product check, even with no event named",
+    text: "Same Game Multi\nArsenal to win @1.50\nOver 2.5 goals @1.80\nCombined odds 4.50",
+    selections: [{ selection: "Arsenal to win", odds: 1.5 }, { selection: "Over 2.5 goals", odds: 1.8 }],
+    totalOdds: 4.5,
+    noWarnings: [/do not match/i],
+  },
+  {
+    name: "legs on the same event are not checked against the total even without a label",
+    text: "Arsenal vs Chelsea - Arsenal to win @1.50\nArsenal vs Chelsea - Over 2.5 goals @1.80\nTotal odds 4.50",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5), win("Arsenal vs Chelsea", "Over 2.5 goals", 1.8)],
+    totalOdds: 4.5,
+    noWarnings: [/do not match/i],
+  },
+  {
+    name: "a long line under a same game multi match is set aside, not taken as a pick",
+    text: `SGM Arsenal vs Chelsea\nArsenal to win @1.50\n${"I think this is a very safe one because of how they have been playing at home lately ".trim()}`,
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5, { confidence: "medium" })],
+    ignored: ["I think this is a very safe one because of how they have been playing at home lately"],
+  },
+  {
+    name: "a price that was stated in fractions is not replaced by a number at the start of the line",
+    text: "1.50 Arsenal vs Chelsea - Arsenal to win @5/2",
+    selections: [{ odds: null, selection: "Arsenal to win" }],
+    warnings: [/fractional/i],
+    noWarnings: [/start of a line/i],
+  },
+  {
+    name: "SGM and SGP on their own work as the word for a stated total",
+    text: "Arsenal vs Chelsea - Arsenal to win @1.50\nLakers vs Celtics - Lakers to win @2.00\nSGM 4.00",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5), win("Lakers vs Celtics", "Lakers to win", 2)],
+    totalOdds: 4,
+  },
+  {
+    name: "SGP odds works as the word for a stated total",
+    text: "Arsenal vs Chelsea - Arsenal to win @1.50\nSGP odds 3.20",
+    selections: [win("Arsenal vs Chelsea", "Arsenal to win", 1.5)],
+    totalOdds: 3.2,
+  },
+  {
+    name: "a number below 1.00 at the start of a line is never used as odds",
+    text: "0.50 Arsenal vs Chelsea - Arsenal to win",
+    selections: [{ odds: null, selection: "Arsenal to win" }],
+    noWarnings: [/start of a line/i],
+  },
+  {
+    name: "Both teams to score with an answer keeps its market and the answer",
+    text: "Arsenal vs Chelsea | Both teams to score: Yes @1.80",
+    selections: [win("Arsenal vs Chelsea", "Yes", 1.8, { market: "Both teams to score" })],
+  },
 ];
 
 describe.each(FIXTURES)("fixture: $name", (fixture) => {

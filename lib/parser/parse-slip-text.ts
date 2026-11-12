@@ -106,6 +106,9 @@ const MARKET_ALIASES: Record<string, string> = {
   dnb: "Draw no bet",
 };
 
+/** Markets whose name is also what the person picked: "Both teams to score" on its own is a pick. */
+const SELF_PICK_MARKETS = new Set(["both teams to score"]);
+
 const marketOf = (text: string): string | null => MARKET_ALIASES[text.trim().toLowerCase()] ?? null;
 
 /** Words that make a line without an event look like a pick rather than chatter. */
@@ -148,6 +151,9 @@ const LABEL_ODDS = new RegExp(String.raw`\bodds?\s*[:=]?\s*${NUM}`, "gi");
 const PAREN_ODDS = /\(\s*(\d+\.\d{1,3})\s*\)\s*$/;
 const BARE_ODDS = /(?:^|\s)(\d+\.\d{2,3})$/;
 const BARE_FRACTION = /(?:^|\s)(\d{1,3}\/\d{1,3})$/;
+/** "1.50 Arsenal vs Chelsea - Arsenal to win": a price first, only trusted when an event and a pick follow and it is not a clock time like "3.30 pm". */
+const LEADING_ODDS = /^(\d+\.\d{2,3})(?!\s*(?:am|pm|:))\s+(\S.*)$/i;
+const LEADING_ODDS_WARNING = "Some odds were read from the start of a line. If one of those numbers is a time, correct it.";
 const NOT_ODDS_BEFORE = /^(?:over|under|o|u|handicap|hcp|ah|at|[+-])$/i;
 
 function lastMatch(pattern: RegExp, text: string): RegExpMatchArray | null {
@@ -216,9 +222,26 @@ function extractOdds(line: string): OddsReading {
       rest = cut(rest, leftover);
     }
   }
+  // Last of all, so a price that was written but unusable (fractions, American) is never replaced by a number at the start.
+  if (odds === null && raw === null && warnings.length === 0) {
+    const leading = LEADING_ODDS.exec(rest);
+    if (leading && EVENT_THEN_PICK.test(leading[2] as string)) {
+      const value = Number(leading[1]);
+      if (value >= 1) {
+        odds = Math.round(value * 1000) / 1000;
+        rest = leading[2] as string;
+        warnings.push(LEADING_ODDS_WARNING);
+      }
+    }
+  }
   return { odds, rest, warnings };
 }
 
+// A stated total: "Total odds 4.02", "Combined odds @ 4.50", "Same game multi odds: 4.50".
+const TOTAL_WORD = String.raw`(?:same[-\s]?game(?:[-\s](?:multi|parlay))?|sgm|sgp|total|combined|accumulator|acca|overall|multi|parlay)`;
+const TOTAL_LINE = new RegExp(String.raw`^${TOTAL_WORD}(?:\s+(?:${TOTAL_WORD}|odds?|price))*\s*[:=\-@]?\s*(\d+(?:\.\d+)?)\s*$`, "i");
+/** A same game multi label at the start of a line, with whatever separator follows it. */
+const SGM_HEAD = /^(?:same[-\s]?game[-\s]?(?:multi|parlay)s?|sgm|sgp)\b[\s:\-–—|]*/i;
 // Structure ------------------------------------------------------------------------------
 
 interface Draft {
@@ -270,6 +293,7 @@ function classify(parts: string[]): Classified {
     const alone = marketOf(part);
     if (alone && market === null) {
       market = alone;
+      if (SELF_PICK_MARKETS.has(part.trim().toLowerCase())) picks.push(part);
       continue;
     }
     picks.push(part);
@@ -278,7 +302,7 @@ function classify(parts: string[]): Classified {
 }
 
 /** Checks that apply however a slip was read: the same pick twice, and a stated total that does not match the legs. */
-export function collectSlipWarnings(selections: readonly ParsedSelection[], totalOdds: number | null): string[] {
+export function collectSlipWarnings(selections: readonly ParsedSelection[], totalOdds: number | null, sameGame = false): string[] {
   const out: string[] = [];
   const seen = new Map<string, number>();
   for (const s of selections) {
@@ -287,7 +311,9 @@ export function collectSlipWarnings(selections: readonly ParsedSelection[], tota
     seen.set(key, (seen.get(key) ?? 0) + 1);
     if (seen.get(key) === 2) out.push(`"${s.event}: ${s.selection}" appears more than once on the slip.`);
   }
-  if (totalOdds !== null && selections.length > 0 && selections.every((s) => s.odds !== null)) {
+  // A same game multi is priced as one bet, so its total is not the product of its legs.
+  const oneEvent = selections.length > 1 && selections.every((s) => s.event !== null && s.event.toLowerCase() === (selections[0]?.event ?? "").toLowerCase());
+  if (!sameGame && !oneEvent && totalOdds !== null && selections.length > 0 && selections.every((s) => s.odds !== null)) {
     const product = selections.reduce((acc, s) => acc * (s.odds as number), 1);
     if (Math.abs(product - totalOdds) / totalOdds > 0.01) {
       out.push(`The total odds on the slip (${totalOdds.toFixed(2)}) do not match the product of the selections' odds (${product.toFixed(2)}).`);
@@ -357,7 +383,9 @@ export function parseSlipText(input: string): ParsedSlip {
     state.pending = null;
   };
 
-  for (const line of lines) {
+  let sameGame = false;
+  for (const rawLine of lines) {
+    let line = rawLine;
     // A sport header applies to the lines below it, exactly as written.
     const header = SPORT_HEADER.exec(line);
     if (header) {
@@ -376,13 +404,26 @@ export function parseSlipText(input: string): ParsedSlip {
       continue;
     }
 
-    const total = /^(?:total|combined|accumulator|acca|overall)(?:\s+odds?)?\s*[:=\-@]?\s*(\d+(?:\.\d+)?)\s*$/i.exec(line);
+    if (SGM_HEAD.test(line)) sameGame = true;
+
+    const total = TOTAL_LINE.exec(line);
     if (total) {
       const value = Number(total[1]);
       if (value >= 1) totalOdds = totalOdds ?? Math.round(value * 1000) / 1000;
       else warn(`The total odds of ${total[1]} are below 1.00 and were not used.`);
       state.previous = null;
       continue;
+    }
+
+    // "Same Game Multi - Arsenal vs Chelsea": the label is not part of the event name.
+    const head = SGM_HEAD.exec(line);
+    if (head) {
+      line = line.slice(head[0].length).trim();
+      if (line === "") {
+        flushPending();
+        state.previous = null;
+        continue;
+      }
     }
 
     const oddsOnly = /^odds?\s*[:=@-]?\s*(\d+(?:\.\d+)?)$/i.exec(line);
@@ -446,6 +487,13 @@ export function parseSlipText(input: string): ParsedSlip {
       if (adopted) adopted.used = true;
       continue;
     }
+    // In a same game multi, a short line under the match is a pick (for example a player), even with no price.
+    if (sameGame && state.pending && selection !== null && [...selection].length <= 80 && !/[.!?]$/.test(selection)) {
+      reading.warnings.forEach(warn);
+      state.pending.used = true;
+      emit({ sourceLine: line, event: state.pending.event, market, selection, odds: reading.odds, adopted: true, unclear });
+      continue;
+    }
     ignore(line);
   }
   flushPending();
@@ -456,7 +504,7 @@ export function parseSlipText(input: string): ParsedSlip {
   }
   const selections = drafts.map(finalize);
 
-  collectSlipWarnings(selections, totalOdds).forEach(warn);
+  collectSlipWarnings(selections, totalOdds, sameGame).forEach(warn);
 
   return { selections, bookmaker, bookingCode, totalOdds, ignoredLines, warnings };
 }
