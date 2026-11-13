@@ -1,5 +1,7 @@
 import type { PGlite } from "@electric-sql/pglite";
 import { fetchAllPages } from "../../lib/services/pagination";
+import type { TelegramLinkRepository } from "../../lib/telegram/repository";
+import type { TelegramRepository } from "../../lib/telegram/types";
 import type {
   BetPatchRecord,
   BetRepository,
@@ -22,7 +24,7 @@ import type {
   StatsBetRow,
 } from "../../lib/services/repository";
 import type { AiUsageRepository } from "../../lib/ai/usage";
-import { asUser } from "./helpers";
+import { asService, asUser } from "./helpers";
 
 /**
  * Test-only BetRepository that runs the REAL SQL (tables, constraints, the
@@ -198,6 +200,39 @@ export function createPgliteAiUsageRepository(db: PGlite, userId: string | null)
     finish: (id, x) =>
       asUser(db, userId, async () => {
         await db.query("select public.finish_ai_call($1::uuid, $2, $3, $4, $5, $6)", [id, x.status, x.model, x.inputTokens, x.outputTokens, Math.round(x.latencyMs)]);
+      }),
+  };
+}
+
+/** Test-only TelegramRepository that calls the REAL telegram_* functions, acting as the server's secret key. */
+export function createPgliteTelegramRepository(db: PGlite): TelegramRepository {
+  const q = async <T>(sql: string, params: unknown[]): Promise<T> => asService(db, async () => (await db.query<{ r: T }>(sql, params)).rows[0]!.r);
+  return {
+    acceptUpdate: (updateId, tg) => q("select public.telegram_accept_update($1, $2) as r", [updateId, tg]),
+    redeemLink: (hash, tg, chat) => q("select public.telegram_redeem_link($1, $2, $3) as r", [hash, tg, chat]),
+    isLinked: (tg) => q("select public.telegram_is_linked($1) as r", [tg]),
+    unlink: (tg) => q("select public.telegram_unlink($1) as r", [tg]),
+    createDraft: (tg, slip, selections) => q("select public.telegram_create_draft($1, $2::jsonb, $3::jsonb) as r", [tg, JSON.stringify(slip), JSON.stringify(selections)]),
+  };
+}
+
+/** Test-only TelegramLinkRepository that acts as one signed-in person, so row-level security applies. */
+export function createPgliteTelegramLinkRepository(db: PGlite, userId: string): TelegramLinkRepository {
+  return {
+    getLink: () =>
+      asUser(db, userId, async () => {
+        const r = await db.query<{ linked_at: Date }>("select linked_at from public.telegram_links");
+        return r.rows[0] ? { linkedAt: new Date(r.rows[0].linked_at).toISOString() } : null;
+      }),
+    createCode: (hash) =>
+      asUser(db, userId, async () => {
+        const r = await db.query<{ e: Date | null }>("select public.create_telegram_link_code($1) as e", [hash]);
+        return r.rows[0]!.e ? new Date(r.rows[0]!.e).toISOString() : null;
+      }),
+    removeLink: () =>
+      asUser(db, userId, async () => {
+        const r = await db.query("delete from public.telegram_links returning id");
+        return r.rows.length > 0;
       }),
   };
 }

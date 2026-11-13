@@ -14,7 +14,7 @@ export type Serialized<T> = T extends Date
       ? { [K in keyof T]: Serialized<T[K]> }
       : T;
 
-export type ApiErrorCode = "unauthenticated" | "validation_failed" | "not_found" | "invalid_json" | "server_error" | "rate_limited" | "ai_unavailable" | "ai_failed" | "invalid_upload" | "too_large";
+export type ApiErrorCode = "unauthenticated" | "validation_failed" | "not_found" | "invalid_json" | "server_error" | "rate_limited" | "ai_unavailable" | "ai_failed" | "invalid_upload" | "too_large" | "telegram_unavailable" | "unauthorized";
 
 export interface ApiErrorBody {
   error: { code: ApiErrorCode; message: string; issues?: { field: string; message: string }[] };
@@ -33,6 +33,23 @@ export type ParsedSlipJson = ParsedSlip;
 export interface ImageReadJson {
   text: string;
   slip: ParsedSlip;
+}
+
+/** Whether Telegram is switched on, and whether this person has connected it. */
+export interface TelegramStatusJson {
+  available: boolean;
+  linked: boolean;
+  /** When they connected, or null. */
+  linkedAt: string | null;
+}
+
+/** A one-time code to connect Telegram. Shown once; only its hash is stored. */
+export interface TelegramLinkCodeJson {
+  code: string;
+  expiresAt: string;
+  botUsername: string;
+  /** Opens the bot with the code filled in. */
+  deepLink: string;
 }
 
 export interface AiStatusJson {

@@ -31,7 +31,9 @@ import { MAX_IMAGE_BYTES } from "../ai/image";
 import { readSlipImage } from "../ai/read-image";
 import { readBodyLimited } from "./body";
 import { AiFailedError, AiRateLimitedError, AiUnavailableError } from "../ai/types";
-import type { ApiErrorBody, AiStatusJson, ImageReadJson } from "./types";
+import type { ApiErrorBody, AiStatusJson, ImageReadJson, TelegramLinkCodeJson, TelegramStatusJson } from "./types";
+import { generateLinkCode, hashLinkCode } from "../telegram/code";
+import type { TelegramLinkRepository } from "../telegram/repository";
 
 /**
  * Route logic as plain `(deps, Request) => Response` functions, so it can be tested without a
@@ -244,6 +246,37 @@ export function handleReadSlipWithAi(deps: AiDeps, request: Request): Promise<Re
 /** Whether AI reading is switched on, so the page only offers it when it can work. */
 export function handleAiStatus(deps: AiDeps): Promise<Response> {
   return run(deps, async (d) => json({ data: { available: d.provider !== null } satisfies AiStatusJson }));
+}
+
+/** What the signed-in person's Telegram settings need. `botUsername` is null when Telegram is not switched on. */
+export interface TelegramLinkDeps {
+  repo: TelegramLinkRepository;
+  botUsername: string | null;
+}
+
+/** Whether Telegram is switched on, and whether this person has connected it. */
+export function handleTelegramStatus(deps: TelegramLinkDeps | null): Promise<Response> {
+  return run(deps, async (d) => {
+    const link = await d.repo.getLink();
+    return json({ data: { available: d.botUsername !== null, linked: link !== null, linkedAt: link?.linkedAt ?? null } satisfies TelegramStatusJson });
+  });
+}
+
+/** Makes a one-time code (10 minutes) to connect Telegram. The code is returned once and only its hash is kept. */
+export function handleTelegramLinkCode(deps: TelegramLinkDeps | null): Promise<Response> {
+  return run(deps, async (d) => {
+    if (d.botUsername === null) return fail(503, "telegram_unavailable", "Telegram is not switched on yet.");
+    const code = generateLinkCode();
+    const expiresAt = await d.repo.createCode(hashLinkCode(code));
+    if (expiresAt === null) return fail(429, "rate_limited", "You have made too many codes. Try again in an hour.");
+    const data: TelegramLinkCodeJson = { code, expiresAt, botUsername: d.botUsername, deepLink: `https://t.me/${d.botUsername}?start=${code}` };
+    return json({ data });
+  });
+}
+
+/** Disconnects this person's Telegram. */
+export function handleTelegramUnlink(deps: TelegramLinkDeps | null): Promise<Response> {
+  return run(deps, async (d) => json({ data: { removed: await d.repo.removeLink() } }));
 }
 
 /** Room for the multipart wrapping around the image itself. */
