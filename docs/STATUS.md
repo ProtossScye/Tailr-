@@ -63,6 +63,14 @@ Last updated: 2026-11-04 (frontend merged; slip tables, slip API, preferences an
   - "Combined odds @ 4.50", "Same game multi odds: 4.50", "SGM 4.50" are read as the total. Odds before the match (`1.50 Arsenal vs Chelsea - Arsenal to win`) are read, with a warning to check, and never when it looks like a time (`3.30 pm`, no pick, below 1.00) or when the line states fractional or American odds.
   - "Both teams to score" on its own is now a pick (market "Both teams to score").
   - Break-tested: 17 deliberate weakenings, all caught after adding tests for the survivors; this also caught a real ordering bug in my first version of the leading-odds rule.
+- **Step 15: Telegram, private text first** (migration `20261113022524_create_telegram`, applied to the live project):
+  - Profile has a Telegram section. "Connect Telegram" makes a one-time 10-character code (valid 10 minutes, 5 per hour; only its SHA-256 hash is stored) and a link that opens the bot with the code filled in. The page shows "Connected" by itself once the bot has it, and can disconnect.
+  - The bot (`/api/telegram/webhook`) works in private chats only and stays silent in groups, supergroups and channels. `/link CODE` (or `/start CODE`) connects, `/unlink` disconnects, `/help` explains. A slip sent as text is read by the same rule-based parser as pasted text (no AI), saved as a **draft** (`needs_review`, never a bet), and the reply lists what was read, flags to check and a link to `/create?draft=...`. Screenshots in Telegram are not read yet and the bot says so. The bot never reads or shows bets.
+  - Safety: every call must carry Telegram's secret header (compared in constant time, body not read otherwise); updates are de-duplicated by Telegram's update id; 30 messages an hour per person; 5 wrong codes an hour per Telegram account; one Telegram account can only be connected to one Tailr account; no message text is stored or logged; replies are plain text only (no formatting mode).
+  - The webhook has no signed-in user, so it uses the server's secret key (`SUPABASE_SECRET_KEY`) and only calls the `telegram_*` database functions, which only that key may run (signed-in people and visitors cannot).
+  - Needs these on Vercel, then a redeploy: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_USERNAME`, `TAILR_APP_URL`, `SUPABASE_SECRET_KEY`. Telegram must also be told the webhook address once. Without them Telegram stays off and Profile says so.
+  - Verified: 1159 tests including real-SQL tests (linking, expiry, limits, ownership, who may call what) and a full journey (make code, connect, send slip, draft appears for the owner only, disconnect); break-tested the bot, webhook and SQL (about 50 deliberate breaks, survivors got tests; this also caught a real bug where the code limit could never trigger); the Profile section was clicked through in a phone-sized browser with the server stubbed. **Not verified: a real Telegram bot**, since it needs your bot token.
+  - Not in this step: reading screenshots in Telegram, preferences applied inside the bot (they apply when you open the draft in Create), X, groups.
 - **Screenshot reading** (migration `20261106140221_ai_calls_read_image`, applied to the live project):
   - Create (adapt mode) now has "Choose a screenshot". The picture is shrunk and re-saved as a JPEG in the browser (longest side 2200 px, about 1.5 MB or less, which also strips location data), then sent to `POST /api/slips/parse-image` (multipart, field `image`).
   - The server checks the real bytes (JPEG, PNG or WebP by signature, 3 MB at most, counted while streaming) before using any allowance. The AI only **transcribes** the visible text; that text then goes through the same deterministic parser as pasted text, so nothing is invented. Confidence is capped at "medium", the review always carries "compare every line with the image", and `[unclear]` parts are flagged. The transcribed text fills the paste box, so the person can fix it and re-read.
@@ -121,7 +129,7 @@ Database rules that mirror the engine: pending has no settlement date or return;
 
 ## Next
 
-Phase two, in order: steps 8 to 13 are done. Next: **step 14** small tracker gaps, **step 15** Telegram, **step 16** private beta. Hosting for live testing comes first. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
+Phase two, in order: steps 8 to 13 and 15 are done (step 14 is in its own pull request). Next: **step 16** private beta. Hosting for live testing comes first. The AI adapter must treat model output as an untrusted draft and may not invent odds, fixtures, markets or booking codes.
 
 Older notes:
 

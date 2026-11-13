@@ -14,9 +14,10 @@ export async function createDb(): Promise<PGlite> {
   await db.exec(`
     create role anon;
     create role authenticated;
-    alter default privileges in schema public grant all on tables to anon, authenticated;
+    create role service_role;
+    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
     create schema auth;
-    grant usage on schema auth to anon, authenticated;
+    grant usage on schema auth to anon, authenticated, service_role;
     create table auth.users (id uuid primary key default gen_random_uuid(), raw_user_meta_data jsonb);
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
@@ -69,6 +70,16 @@ export async function asUser<T>(db: PGlite, userId: string | null, fn: () => Pro
   } finally {
     await db.exec("reset role");
     await db.query("select set_config('request.jwt.claim.sub', '', false)");
+  }
+}
+
+/** Runs fn as the server's secret key (the `service_role`), which is what the Telegram webhook uses. */
+export async function asService<T>(db: PGlite, fn: () => Promise<T>): Promise<T> {
+  await db.exec("set role service_role");
+  try {
+    return await fn();
+  } finally {
+    await db.exec("reset role");
   }
 }
 

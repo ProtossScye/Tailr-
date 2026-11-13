@@ -9,6 +9,7 @@ import { hasAnyPreference } from "@/lib/client/preferences";
 import { UNSPECIFIED, bookmakerOf, groupBets } from "@/lib/client/stats";
 import { DownloadIcon, LogoutIcon } from "@/components/icons";
 import { InstallPrompt } from "@/components/install-prompt";
+import { TelegramConnect } from "@/components/telegram-connect";
 import { PageHeader, Segmented, initialsOf } from "@/components/ui";
 import { useCurrentUser } from "@/components/user-context";
 import { saveDisplayName } from "./actions";
@@ -246,6 +247,13 @@ export function ProfileView() {
       </section>
 
       <PasswordSection />
+
+      <section className="section" aria-labelledby="telegram-title">
+        <h2 className="section-title" id="telegram-title">
+          Telegram
+        </h2>
+        <TelegramConnect />
+      </section>
 
       <section className="section" aria-labelledby="install-title">
         <h2 className="section-title" id="install-title">
