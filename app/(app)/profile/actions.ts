@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { deleteMyAccount } from "@/lib/account/delete";
 import { newPasswordProblem } from "@/lib/auth/validate";
 
 export type ProfileFormState = { error?: string; message?: string } | undefined;
@@ -59,4 +62,64 @@ export async function changePassword(_prev: ProfileFormState, formData: FormData
     return { error: "Could not change your password. Try again." };
   }
   return { message: "Password changed." };
+}
+
+/**
+ * Deletes the signed-in person's account and everything they own (the database cascades). They must
+ * type DELETE and enter their password. Removing an auth user needs the secret key, which stays on
+ * the server and is used for this one call only.
+ */
+export async function deleteAccount(_prev: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
+  const supabase = await createClient();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const secret = process.env.SUPABASE_SECRET_KEY?.trim();
+
+  const result = await deleteMyAccount(
+    {
+      async currentUser() {
+        const { data } = await supabase.auth.getClaims();
+        const id = data?.claims?.sub;
+        const email = data?.claims?.email;
+        return typeof id === "string" && typeof email === "string" && email !== "" ? { id, email } : null;
+      },
+      async passwordIsRight(email, password) {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        return !error;
+      },
+      deleteUser:
+        url && secret
+          ? async (id) => {
+              const admin = createAdminClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
+              const { error } = await admin.auth.admin.deleteUser(id);
+              if (error) {
+                console.error("[profile] could not delete account:", error.code ?? "no code");
+                throw new Error("delete failed");
+              }
+            }
+          : null,
+    },
+    { confirm: formData.get("confirm"), password: formData.get("password") },
+  );
+
+  if (!result.ok) return { error: result.error };
+  await supabase.auth.signOut().catch(() => undefined);
+  redirect("/sign-in?deleted=1");
+}
+
+/** Sends a short note to the team. The database checks the text and allows 10 notes an hour. */
+export async function sendFeedback(_prev: ProfileFormState, formData: FormData): Promise<ProfileFormState> {
+  const kind = String(formData.get("kind") ?? "");
+  const message = String(formData.get("message") ?? "");
+  if (message.trim() === "") return { error: "Write a few words first." };
+  if (message.trim().length > 2000) return { error: "Keep it to 2000 characters or fewer." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("submit_feedback", { p_kind: kind, p_message: message });
+  if (error) {
+    console.error("[profile] could not send feedback:", error.code ?? "no code");
+    return { error: "Could not send that. Try again." };
+  }
+  if (data === "limited") return { error: "You have sent a lot of notes just now. Try again in an hour." };
+  if (data !== "ok") return { error: "Choose what kind of note this is, then try again." };
+  return { message: "Thank you. We read every note." };
 }

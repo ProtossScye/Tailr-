@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { safeNext } from "@/lib/api/safe-next";
+import { betaCodeFromEnv, betaCodeProblem } from "@/lib/auth/beta";
 import { cleanCode, cleanEmail, newPasswordProblem } from "@/lib/auth/validate";
 
 export type AuthFormState = { error?: string; message?: string } | undefined;
@@ -39,6 +40,8 @@ export async function signIn(_prev: AuthFormState, formData: FormData): Promise<
 }
 
 export async function signUp(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
+  const inviteProblem = betaCodeProblem(betaCodeFromEnv(), formData.get("invite"));
+  if (inviteProblem) return { error: inviteProblem };
   const email = cleanEmail(formData.get("email"));
   const password = String(formData.get("password") ?? "");
   if (!email) return { error: "Enter a valid email address." };
