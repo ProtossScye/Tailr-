@@ -14,6 +14,8 @@ import { PageHeader, Segmented, initialsOf } from "@/components/ui";
 import { useCurrentUser } from "@/components/user-context";
 import { saveDisplayName } from "./actions";
 import { PasswordSection } from "./password-form";
+import { DeleteAccountSection } from "./delete-account";
+import { FeedbackSection } from "./feedback-form";
 
 type Theme = "system" | "dark" | "light";
 
@@ -247,6 +249,8 @@ export function ProfileView() {
       </section>
 
       <PasswordSection />
+      <FeedbackSection />
+      <DeleteAccountSection />
 
       <section className="section" aria-labelledby="telegram-title">
         <h2 className="section-title" id="telegram-title">
@@ -305,8 +309,11 @@ export function ProfileView() {
         <div className="card card-pad stack">
           <h3 style={{ fontSize: 16 }}>Account</h3>
           <p className="muted">
-            Account deletion, password changes, notification preferences and profile visibility are not available in the app yet. Profile visibility does
-            not apply because profiles are private: only you can see your bets.
+            Notification preferences and profile visibility are not available in the app yet. Profile visibility does not apply because profiles are
+            private: only you can see your bets.
+          </p>
+          <p>
+            <a href="/privacy">How Tailr handles your data</a>
           </p>
         </div>
       </section>

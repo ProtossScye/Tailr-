@@ -97,10 +97,17 @@ export function SignInForm({ next }: { next?: string }) {
   );
 }
 
-export function SignUpForm() {
+export function SignUpForm({ inviteRequired = false }: { inviteRequired?: boolean }) {
   const [state, formAction, pending] = useAction(signUp);
   return (
     <form action={formAction} className="form">
+      {inviteRequired ? (
+        <div className="field">
+          <label htmlFor="invite">Invite code</label>
+          <input id="invite" className="input" name="invite" autoComplete="off" autoCapitalize="none" spellCheck={false} required />
+          <span className="hint">Tailr is invite-only while we test. Use the code you were sent.</span>
+        </div>
+      ) : null}
       <EmailField />
       <PasswordField id="password" name="password" label="Password" autoComplete="new-password" hint="At least 8 characters." />
       <PasswordField id="confirm" name="confirm" label="Confirm password" autoComplete="new-password" />
@@ -108,6 +115,9 @@ export function SignUpForm() {
       <button type="submit" className="btn btn-primary btn-block" disabled={pending}>
         {pending ? "Please wait" : "Create account"}
       </button>
+      <p className="auth-foot" style={{ textAlign: "center" }}>
+        <Link href="/privacy">How Tailr handles your data</Link>
+      </p>
       <p className="hint">We will email you a 6-digit code to confirm your address.</p>
     </form>
   );
